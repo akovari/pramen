@@ -993,7 +993,7 @@ record of any changes to the architecture.
 - native PostgreSQL `COPY` sink covering local, Aurora, and RDS;
 - bounded channels, graceful shutdown, metrics, file checkpoints;
 - the four-command CLI and deterministic integration tests;
-- one static binary for Linux and macOS.
+- one static binary for Linux, macOS, and Windows, all blocking CI targets.
 
 Exit criterion: a new user reaches enriched rows in PostgreSQL from a
 published binary and one YAML file in under ten minutes; crash/restart tests
@@ -1052,6 +1052,8 @@ the synonyms to avoid, since the same vocabulary feeds the paper.
 - Apache Arrow record batches internally.
 - Unified bounded/unbounded dataflow model.
 - Lean v1: one static binary with zero native driver dependencies.
+- Tier-one targets: Linux x86_64/aarch64, macOS aarch64, and Windows x86_64,
+  all blocking in CI.
 - Deterministic v1 transforms are DataFusion SQL/expressions.
 - WASM as the user-code extension boundary, delivered as the first post-v1
   milestone rather than in v1.
@@ -1103,11 +1105,9 @@ the synonyms to avoid, since the same vocabulary feeds the paper.
 2. Which open-weight model should pin the vLLM acceptance profile?
 3. Should schema evolution be strict by default, or permit configured
    additive changes?
-4. Must Windows be a tier-one production target, or only a development target
-   initially?
-5. Should the first Aurora write mode be append-only, idempotent replace by
+4. Should the first Aurora write mode be append-only, idempotent replace by
    work unit, or keyed upsert?
-6. Should a future embeddable Rust library be a supported product surface or
+5. Should a future embeddable Rust library be a supported product surface or
    remain an internal implementation detail?
 
 ## 18. Research goal and publication path

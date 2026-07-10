@@ -111,7 +111,10 @@ yet.
 
 Read the [product and architecture direction](docs/architecture.md) for the
 competitive position, proposed runtime, WASM ABI, connector strategy, delivery
-semantics, and phased roadmap.
+semantics, and phased roadmap. The step-by-step, parallelizable task breakdown
+with measurable exit criteria lives in the
+[implementation plan](docs/implementation-plan.md); contributor and agent
+conventions live in [AGENTS.md](AGENTS.md).
 
 ## Initial decisions
 
