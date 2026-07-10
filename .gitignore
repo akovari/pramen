@@ -1,0 +1,8 @@
+/target
+lcov.info
+/runs
+.env
+.env.*
+.DS_Store
+mise.local.toml
+/spikes/**/target

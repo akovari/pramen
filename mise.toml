@@ -1,0 +1,46 @@
+# Tool versions are pinned exactly; Renovate proposes updates.
+[tools]
+lefthook = "2.1.10"
+"ubi:nextest-rs/nextest" = { version = "cargo-nextest-0.9.140", exe = "cargo-nextest", tag_regex = "^cargo-nextest" }
+"ubi:taiki-e/cargo-llvm-cov" = "0.8.7"
+"ubi:EmbarkStudios/cargo-deny" = "0.20.2"
+git-cliff = "2.13.1"
+
+[tasks.fmt]
+description = "Format all Rust code"
+run = "cargo fmt --all"
+
+[tasks.lint]
+description = "Format check + clippy with warnings denied"
+run = [
+    "cargo fmt --all --check",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+]
+
+[tasks.test]
+description = "Run unit/integration tests and doc tests"
+run = [
+    "cargo nextest run --workspace",
+    "cargo test --doc --workspace",
+]
+
+[tasks.deny]
+description = "Supply-chain checks: advisories, licenses, bans, sources"
+run = "cargo deny check"
+
+[tasks.cov]
+description = "Coverage report (lcov.info + summary)"
+run = "cargo llvm-cov nextest --workspace --lcov --output-path lcov.info --summary-only"
+
+[tasks.docs]
+description = "Build API docs with warnings denied"
+run = "cargo doc --workspace --no-deps"
+env = { RUSTDOCFLAGS = "-D warnings" }
+
+[tasks.bench]
+description = "Run criterion benchmarks"
+run = "cargo bench --workspace"
+
+[tasks.ci]
+description = "The full local gate; identical checks run in GitHub Actions"
+depends = ["lint", "deny", "test", "docs"]

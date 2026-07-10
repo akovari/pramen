@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/pramen",
+    "crates/pramen-core",
+    "crates/pramen-io",
+    "crates/pramen-ai",
+    "crates/pramen-wasm",
+]
+
+[workspace.package]
+version = "0.0.1"
+# Flipped at the first public release (P2.2).
+publish = false
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/akovari/pramen"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

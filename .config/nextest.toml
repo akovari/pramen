@@ -1,0 +1,9 @@
+[profile.default]
+fail-fast = false
+
+[profile.ci]
+fail-fast = false
+retries = { backoff = "fixed", count = 1, delay = "2s" }
+
+[profile.ci.junit]
+path = "junit.xml"

@@ -1,0 +1,15 @@
+[package]
+name = "pramen"
+description = "Pramen: a lean, columnar data movement and transformation runtime with governed LLM enrichment"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+pramen-core = { path = "../pramen-core" }
+
+[lints]
+workspace = true

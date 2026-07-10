@@ -1,0 +1,10 @@
+# Install once per clone: `mise exec -- lefthook install`
+pre-commit:
+  parallel: true
+  jobs:
+    - name: rustfmt
+      glob: "*.rs"
+      run: cargo fmt --all --check
+    - name: clippy
+      glob: "*.rs"
+      run: cargo clippy --workspace --all-targets -- -D warnings
