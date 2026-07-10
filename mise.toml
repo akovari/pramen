@@ -5,6 +5,7 @@ lefthook = "2.1.10"
 "ubi:taiki-e/cargo-llvm-cov" = "0.8.7"
 "ubi:EmbarkStudios/cargo-deny" = "0.20.2"
 git-cliff = "2.13.1"
+"ubi:axodotdev/cargo-dist" = { version = "0.30.0", exe = "dist" }
 
 [tasks.fmt]
 description = "Format all Rust code"

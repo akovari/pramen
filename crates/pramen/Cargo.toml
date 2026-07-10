@@ -8,6 +8,11 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+# The workspace sets publish = false until the first public release; this
+# opts the binary back in for dist release builds.
+[package.metadata.dist]
+dist = true
+
 [dependencies]
 pramen-core = { path = "../pramen-core" }
 

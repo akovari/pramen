@@ -1,5 +1,7 @@
 [workspace]
 resolver = "3"
+# Spikes are disposable and deliberately outside the workspace gates.
+exclude = ["spikes"]
 members = [
     "crates/pramen",
     "crates/pramen-core",
@@ -29,3 +31,8 @@ expect_used = "deny"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
