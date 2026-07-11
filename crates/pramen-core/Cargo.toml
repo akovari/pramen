@@ -9,6 +9,20 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+arrow = { workspace = true }
+async-trait = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "macros", "time"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [lints]
 workspace = true

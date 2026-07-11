@@ -1,0 +1,605 @@
+{
+  "$defs": {
+    "AiBudget": {
+      "additionalProperties": false,
+      "description": "Hard per-record token budgets for a semantic transform.",
+      "properties": {
+        "maxInputTokensPerRecord": {
+          "description": "Maximum input tokens per record.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxOutputTokensPerRecord": {
+          "description": "Maximum output tokens per record.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AiOutput": {
+      "additionalProperties": false,
+      "description": "The typed output contract of a semantic transform.",
+      "properties": {
+        "fields": {
+          "description": "Columns the model must produce.",
+          "items": {
+            "$ref": "#/$defs/FieldSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "type": "object"
+    },
+    "AiValidation": {
+      "additionalProperties": false,
+      "description": "Validation policy for semantic transform outputs.",
+      "properties": {
+        "onInvalid": {
+          "$ref": "#/$defs/InvalidPolicy",
+          "default": "fail",
+          "description": "What to do with records whose model output fails schema validation."
+        }
+      },
+      "type": "object"
+    },
+    "ApiVersion": {
+      "description": "The accepted `apiVersion` values.",
+      "oneOf": [
+        {
+          "const": "pramen.dev/v1alpha1",
+          "description": "The initial, still-unstable schema version.",
+          "type": "string"
+        }
+      ]
+    },
+    "CheckpointSpec": {
+      "additionalProperties": false,
+      "description": "Checkpoint storage location.",
+      "properties": {
+        "url": {
+          "description": "Checkpoint directory URL, e.g. `file:///var/lib/pramen/checkpoints/`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "ExecutionMode": {
+      "description": "Dispatch policy for semantic transforms.",
+      "oneOf": [
+        {
+          "const": "auto",
+          "description": "Let the runtime choose between online and provider-batch execution.",
+          "type": "string"
+        },
+        {
+          "const": "online",
+          "description": "Always call the provider synchronously.",
+          "type": "string"
+        },
+        {
+          "const": "batch",
+          "description": "Always use the provider's asynchronous batch API.",
+          "type": "string"
+        }
+      ]
+    },
+    "FieldSpec": {
+      "additionalProperties": false,
+      "description": "One output column of a semantic transform.",
+      "properties": {
+        "name": {
+          "description": "Column name.",
+          "type": "string"
+        },
+        "nullable": {
+          "default": false,
+          "description": "Whether the model may return null for this column.",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/FieldType",
+          "description": "Column type."
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "FieldType": {
+      "description": "Scalar types available to semantic transform outputs.",
+      "oneOf": [
+        {
+          "const": "utf8",
+          "description": "UTF-8 string.",
+          "type": "string"
+        },
+        {
+          "const": "int64",
+          "description": "64-bit signed integer.",
+          "type": "string"
+        },
+        {
+          "const": "float64",
+          "description": "64-bit float.",
+          "type": "string"
+        },
+        {
+          "const": "bool",
+          "description": "Boolean.",
+          "type": "string"
+        },
+        {
+          "const": "timestamp",
+          "description": "Microsecond-precision UTC timestamp.",
+          "type": "string"
+        }
+      ]
+    },
+    "FormatSpec": {
+      "description": "File formats understood by the v1 source.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Apache Parquet.",
+          "properties": {
+            "type": {
+              "const": "parquet",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Newline-delimited JSON.",
+          "properties": {
+            "type": {
+              "const": "ndjson",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "InvalidPolicy": {
+      "description": "Disposition of records that fail output validation.",
+      "oneOf": [
+        {
+          "const": "fail",
+          "description": "Fail the run.",
+          "type": "string"
+        },
+        {
+          "const": "drop",
+          "description": "Drop the record and count it.",
+          "type": "string"
+        },
+        {
+          "const": "review",
+          "description": "Route the record to the review destination.",
+          "type": "string"
+        }
+      ]
+    },
+    "Kind": {
+      "description": "The accepted `kind` values.",
+      "oneOf": [
+        {
+          "const": "Pipeline",
+          "description": "A data pipeline definition.",
+          "type": "string"
+        }
+      ]
+    },
+    "Metadata": {
+      "additionalProperties": false,
+      "description": "Pipeline identity.",
+      "properties": {
+        "name": {
+          "description": "Pipeline name: lowercase alphanumerics and hyphens, DNS-label style.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ModelSpec": {
+      "additionalProperties": false,
+      "description": "A named model configuration.",
+      "properties": {
+        "endpoint": {
+          "description": "Endpoint override, primarily for self-hosted or stubbed providers.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Provider-specific model identifier.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "Provider adapter identifier, e.g. `bedrock` or `openai-compat`.",
+          "type": "string"
+        },
+        "region": {
+          "description": "Provider region pin, where the provider has regions.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "provider",
+        "model"
+      ],
+      "type": "object"
+    },
+    "PipelineSpecBody": {
+      "additionalProperties": false,
+      "description": "The `spec` body of a pipeline document.",
+      "properties": {
+        "models": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ModelSpec"
+          },
+          "description": "Named model configurations referenced by semantic transforms.",
+          "type": "object"
+        },
+        "runtime": {
+          "$ref": "#/$defs/RuntimeSpec",
+          "default": {
+            "maxInflightBytes": 268435456,
+            "targetBatchBytes": 8388608
+          },
+          "description": "Engine tuning and checkpointing; every field has a default."
+        },
+        "sink": {
+          "$ref": "#/$defs/SinkSpec",
+          "description": "Where records go."
+        },
+        "source": {
+          "$ref": "#/$defs/SourceSpec",
+          "description": "Where records come from."
+        },
+        "transforms": {
+          "description": "Ordered transform steps; may be empty for pure movement pipelines.",
+          "items": {
+            "$ref": "#/$defs/TransformSpec"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "source",
+        "sink"
+      ],
+      "type": "object"
+    },
+    "RuntimeSpec": {
+      "additionalProperties": false,
+      "description": "Engine tuning and checkpointing.",
+      "properties": {
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Checkpoint location; omit to run without resumability."
+        },
+        "maxInflightBytes": {
+          "default": 268435456,
+          "description": "Ceiling on bytes in flight across all channels.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "targetBatchBytes": {
+          "default": 8388608,
+          "description": "Target size of one Arrow batch, in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "SinkMode": {
+      "description": "Load semantics for database sinks.",
+      "oneOf": [
+        {
+          "const": "append",
+          "description": "Append rows; replays may duplicate unless the run is idempotent.",
+          "type": "string"
+        },
+        {
+          "const": "upsert",
+          "description": "Stage and merge on the target's primary key for idempotent replays.",
+          "type": "string"
+        }
+      ]
+    },
+    "SinkSpec": {
+      "description": "Record sinks.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A PostgreSQL table loaded via native binary `COPY`.",
+          "properties": {
+            "dsnEnv": {
+              "default": "PRAMEN_POSTGRES_DSN",
+              "description": "Environment variable holding the connection string.\n\nConnection strings are secrets and never appear in the document.",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/SinkMode",
+              "default": "append",
+              "description": "Load semantics."
+            },
+            "target": {
+              "description": "Qualified table name, `schema.table`.",
+              "type": "string"
+            },
+            "type": {
+              "const": "postgres",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "target"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SourceSpec": {
+      "description": "Record sources.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Files in an object store or on the local filesystem.",
+          "properties": {
+            "format": {
+              "$ref": "#/$defs/FormatSpec",
+              "description": "File format of the objects."
+            },
+            "type": {
+              "const": "object_store",
+              "type": "string"
+            },
+            "url": {
+              "description": "Location URL: `s3://…`, `file://…`, or a bare local path prefix.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "url",
+            "format"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "TransformSpec": {
+      "description": "A transform step.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A deterministic SQL transform over the incoming stream.",
+          "properties": {
+            "id": {
+              "description": "Unique step identifier.",
+              "type": "string"
+            },
+            "query": {
+              "description": "SQL text; the incoming stream is visible as the table `input`.",
+              "type": "string"
+            },
+            "type": {
+              "const": "sql",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "query"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Governed semantic extraction into typed columns.",
+          "properties": {
+            "budget": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AiBudget"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Hard per-record token budgets."
+            },
+            "execution": {
+              "$ref": "#/$defs/ExecutionMode",
+              "default": "auto",
+              "description": "How invocations are dispatched to the provider."
+            },
+            "id": {
+              "description": "Unique step identifier.",
+              "type": "string"
+            },
+            "inputs": {
+              "description": "Input column names passed to the model.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "instruction": {
+              "description": "The fixed instruction; part of the work key.",
+              "type": "string"
+            },
+            "model": {
+              "description": "Name of a model declared under `spec.models`.",
+              "type": "string"
+            },
+            "output": {
+              "$ref": "#/$defs/AiOutput",
+              "description": "The typed output contract."
+            },
+            "type": {
+              "const": "ai.extract",
+              "type": "string"
+            },
+            "validation": {
+              "$ref": "#/$defs/AiValidation",
+              "default": {
+                "onInvalid": "fail"
+              },
+              "description": "What happens when the model output fails validation."
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "model",
+            "inputs",
+            "instruction",
+            "output"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Governed semantic classification into typed columns.",
+          "properties": {
+            "budget": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AiBudget"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Hard per-record token budgets."
+            },
+            "execution": {
+              "$ref": "#/$defs/ExecutionMode",
+              "default": "auto",
+              "description": "How invocations are dispatched to the provider."
+            },
+            "id": {
+              "description": "Unique step identifier.",
+              "type": "string"
+            },
+            "inputs": {
+              "description": "Input column names passed to the model.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "instruction": {
+              "description": "The fixed instruction; part of the work key.",
+              "type": "string"
+            },
+            "model": {
+              "description": "Name of a model declared under `spec.models`.",
+              "type": "string"
+            },
+            "output": {
+              "$ref": "#/$defs/AiOutput",
+              "description": "The typed output contract."
+            },
+            "type": {
+              "const": "ai.classify",
+              "type": "string"
+            },
+            "validation": {
+              "$ref": "#/$defs/AiValidation",
+              "default": {
+                "onInvalid": "fail"
+              },
+              "description": "What happens when the model output fails validation."
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "model",
+            "inputs",
+            "instruction",
+            "output"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A complete, parsed pipeline document.",
+  "properties": {
+    "apiVersion": {
+      "$ref": "#/$defs/ApiVersion",
+      "description": "Versioned API surface identifier; only `pramen.dev/v1alpha1` today."
+    },
+    "kind": {
+      "$ref": "#/$defs/Kind",
+      "description": "Document kind; only `Pipeline` today."
+    },
+    "metadata": {
+      "$ref": "#/$defs/Metadata",
+      "description": "Names and labels for the pipeline."
+    },
+    "spec": {
+      "$ref": "#/$defs/PipelineSpecBody",
+      "description": "The pipeline itself: models, source, transforms, sink, runtime."
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "PipelineSpec",
+  "type": "object"
+}

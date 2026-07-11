@@ -4,6 +4,10 @@
 //! See `docs/architecture.md` for the design this crate implements. The
 //! crate is a skeleton until the Phase 1 foundation tasks (F1–F3) land.
 
+pub mod observe;
+pub mod runtime;
+pub mod spec;
+
 /// The version of the Pramen workspace this crate was built from.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

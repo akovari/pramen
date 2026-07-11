@@ -1,0 +1,51 @@
+# The canonical Pramen v1alpha1 example: Parquet in S3, one SQL transform,
+# one governed semantic extraction, native COPY into PostgreSQL.
+#
+#   pramen validate examples/governed-enrichment.yaml
+#   pramen explain examples/governed-enrichment.yaml
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: governed-semantic-enrichment
+spec:
+  models:
+    enrichment:
+      provider: bedrock
+      model: anthropic.claude-3-haiku-20240307-v1:0
+      region: eu-central-1
+  source:
+    type: object_store
+    url: s3://example-input/events/
+    format:
+      type: parquet
+  transforms:
+    - id: normalize
+      type: sql
+      query: >
+        SELECT ticket_id, lower(trim(description)) AS description, created_at
+        FROM input
+        WHERE description IS NOT NULL
+    - id: classify
+      type: ai.extract
+      model: enrichment
+      execution: auto
+      inputs: [description]
+      instruction: Classify the record into a business category and explain why.
+      output:
+        fields:
+          - { name: category, type: utf8, nullable: false }
+          - { name: rationale, type: utf8, nullable: false }
+      validation:
+        onInvalid: review
+      budget:
+        maxInputTokensPerRecord: 4096
+        maxOutputTokensPerRecord: 256
+  sink:
+    type: postgres
+    target: analytics.events
+    mode: append
+  runtime:
+    targetBatchBytes: 8388608
+    maxInflightBytes: 268435456
+    checkpoint:
+      url: file:///var/lib/pramen/checkpoints/

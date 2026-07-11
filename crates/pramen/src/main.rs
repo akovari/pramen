@@ -1,24 +1,194 @@
-//! The `pramen` CLI and daemon entry point.
+//! The `pramen` CLI.
 //!
-//! Skeleton: prints version information until the Phase 1 CLI tasks
-//! (P1.15–P1.18) land. Argument parsing is deliberately dependency-free at
-//! this stage.
+//! v1 surface: `validate`, `explain`, `run`, `ai`. The first two are live;
+//! `run` and `ai` land with the Phase 1 engine and AI workstreams.
 
+use clap::{Parser, Subcommand};
+use pramen_core::observe::LogFormat;
+use pramen_core::spec::{
+    self, FormatSpec, PipelineSpec, SinkSpec, SourceSpec, SpecError, TransformSpec,
+};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
-        None | Some("--version") | Some("-V") | Some("version") => {
-            println!("pramen {}", pramen_core::VERSION);
-            ExitCode::SUCCESS
+#[derive(Parser)]
+#[command(
+    name = "pramen",
+    version,
+    about = "Lean, columnar data movement with governed LLM enrichment"
+)]
+struct Cli {
+    /// Log output format.
+    #[arg(long, global = true, default_value = "pretty")]
+    log_format: LogFormatArg,
+    #[command(subcommand)]
+    command: Command,
+}
+
+/// Clap-friendly wrapper for [`LogFormat`].
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum LogFormatArg {
+    /// Human-oriented output.
+    Pretty,
+    /// One JSON object per line.
+    Json,
+    /// No log output.
+    Silent,
+}
+
+impl From<LogFormatArg> for LogFormat {
+    fn from(arg: LogFormatArg) -> Self {
+        match arg {
+            LogFormatArg::Pretty => Self::Pretty,
+            LogFormatArg::Json => Self::Json,
+            LogFormatArg::Silent => Self::Silent,
         }
-        Some(other) => {
-            eprintln!("pramen: unknown command `{other}`");
-            eprintln!(
-                "The CLI surface (validate, explain, run, ai evaluate) is not implemented yet."
-            );
+    }
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Check a pipeline document and report every problem found.
+    Validate {
+        /// Path to the pipeline YAML document.
+        file: PathBuf,
+    },
+    /// Show the resolved plan for a pipeline document.
+    Explain {
+        /// Path to the pipeline YAML document.
+        file: PathBuf,
+        /// Emit the plan as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Execute a pipeline (not yet implemented).
+    Run {
+        /// Path to the pipeline YAML document.
+        file: PathBuf,
+    },
+    /// AI governance utilities (not yet implemented).
+    Ai,
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    if let Err(error) = pramen_core::observe::init_logging(cli.log_format.into()) {
+        eprintln!("pramen: failed to initialize logging: {error}");
+        return ExitCode::FAILURE;
+    }
+    match cli.command {
+        Command::Validate { file } => match load(&file) {
+            Ok(spec) => {
+                println!(
+                    "OK: `{}` is a valid pramen.dev/v1alpha1 pipeline",
+                    spec.metadata.name
+                );
+                ExitCode::SUCCESS
+            }
+            Err(exit) => exit,
+        },
+        Command::Explain { file, json } => match load(&file) {
+            Ok(spec) => {
+                if json {
+                    match serde_json::to_string_pretty(&spec) {
+                        Ok(text) => println!("{text}"),
+                        Err(error) => {
+                            eprintln!("pramen: failed to render plan: {error}");
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                } else {
+                    explain(&spec);
+                }
+                ExitCode::SUCCESS
+            }
+            Err(exit) => exit,
+        },
+        Command::Run { .. } => {
+            eprintln!("pramen: `run` is not implemented yet (Phase 1 engine workstream)");
+            ExitCode::FAILURE
+        }
+        Command::Ai => {
+            eprintln!("pramen: `ai` is not implemented yet (Phase 1 AI workstream)");
             ExitCode::FAILURE
         }
     }
+}
+
+fn load(file: &PathBuf) -> Result<PipelineSpec, ExitCode> {
+    let text = std::fs::read_to_string(file).map_err(|error| {
+        eprintln!("pramen: cannot read {}: {error}", file.display());
+        ExitCode::FAILURE
+    })?;
+    spec::parse(&text).map_err(|error| {
+        match &error {
+            SpecError::Parse(message) => {
+                eprintln!("pramen: {}: {message}", file.display());
+            }
+            SpecError::Invalid(issues) => {
+                eprintln!(
+                    "pramen: {} has {} validation issue(s):",
+                    file.display(),
+                    issues.len()
+                );
+                for issue in issues {
+                    eprintln!("  - {issue}");
+                }
+            }
+        }
+        ExitCode::from(2)
+    })
+}
+
+fn explain(spec: &PipelineSpec) {
+    println!("pipeline: {}", spec.metadata.name);
+
+    let SourceSpec::ObjectStore { url, format } = &spec.spec.source;
+    let format = match format {
+        FormatSpec::Parquet => "parquet",
+        FormatSpec::Ndjson => "ndjson",
+    };
+    println!("  source: object_store {url} ({format})");
+
+    for transform in &spec.spec.transforms {
+        match transform {
+            TransformSpec::Sql(sql) => {
+                println!("  transform {}: sql", sql.id);
+            }
+            TransformSpec::AiExtract(ai) | TransformSpec::AiClassify(ai) => {
+                let kind = match transform {
+                    TransformSpec::AiExtract(_) => "ai.extract",
+                    _ => "ai.classify",
+                };
+                let model = spec.spec.models.get(&ai.model);
+                let provider = model.map_or("?", |m| m.provider.as_str());
+                let model_id = model.map_or("?", |m| m.model.as_str());
+                println!(
+                    "  transform {}: {kind} via {provider}/{model_id}, execution {:?}, {} output field(s), on invalid {:?}",
+                    ai.id,
+                    ai.execution,
+                    ai.output.fields.len(),
+                    ai.validation.on_invalid,
+                );
+            }
+        }
+    }
+
+    let SinkSpec::Postgres {
+        target,
+        mode,
+        dsn_env,
+    } = &spec.spec.sink;
+    println!("  sink: postgres {target} (mode {mode:?}, dsn from ${dsn_env})");
+
+    let runtime = &spec.spec.runtime;
+    println!(
+        "  runtime: target batch {} B, max inflight {} B, checkpoint {}",
+        runtime.target_batch_bytes,
+        runtime.max_inflight_bytes,
+        runtime
+            .checkpoint
+            .as_ref()
+            .map_or("disabled", |c| c.url.as_str()),
+    );
 }
