@@ -1,0 +1,46 @@
+---
+// The end-to-end pipeline visualization used on the landing page and in
+// the architecture concept page.
+---
+
+<svg class="pramen-diagram" viewBox="0 0 860 190" role="img" aria-label="Pramen pipeline: object storage through SQL and governed AI transforms into PostgreSQL">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z" />
+    </marker>
+  </defs>
+
+  <!-- Source -->
+  <rect class="box" x="10" y="55" width="150" height="80" rx="10" />
+  <text class="label" x="85" y="88" text-anchor="middle">Object storage</text>
+  <text class="sublabel" x="85" y="108" text-anchor="middle">Parquet · NDJSON</text>
+
+  <!-- SQL transform -->
+  <rect class="box-accent" x="235" y="55" width="150" height="80" rx="10" />
+  <text class="label" x="310" y="88" text-anchor="middle">SQL transform</text>
+  <text class="sublabel" x="310" y="108" text-anchor="middle">DataFusion, bounded memory</text>
+
+  <!-- AI transform -->
+  <rect class="box-accent" x="460" y="55" width="150" height="80" rx="10" />
+  <text class="label" x="535" y="82" text-anchor="middle">ai.extract</text>
+  <text class="sublabel" x="535" y="101" text-anchor="middle">schema-bound, budgeted</text>
+  <text class="sublabel" x="535" y="117" text-anchor="middle">durable result ledger</text>
+
+  <!-- Sink -->
+  <rect class="box" x="690" y="55" width="150" height="80" rx="10" />
+  <text class="label" x="765" y="88" text-anchor="middle">PostgreSQL</text>
+  <text class="sublabel" x="765" y="108" text-anchor="middle">native binary COPY</text>
+
+  <!-- Flows (Arrow batches) -->
+  <path class="flow" d="M 160 95 L 230 95" />
+  <path class="flow" d="M 385 95 L 455 95" />
+  <path class="flow" d="M 610 95 L 685 95" />
+
+  <text class="sublabel" x="195" y="82" text-anchor="middle">Arrow</text>
+  <text class="sublabel" x="420" y="82" text-anchor="middle">Arrow</text>
+  <text class="sublabel" x="647" y="82" text-anchor="middle">Arrow</text>
+
+  <!-- Backpressure note -->
+  <path class="flow-dim" d="M 765 140 C 765 175, 85 175, 85 140" />
+  <text class="sublabel" x="425" y="162" text-anchor="middle">bounded channels — backpressure flows upstream, memory stays flat</text>
+</svg>

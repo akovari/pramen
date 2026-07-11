@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <!-- A spring/source: concentric ripples with a rising droplet -->
+  <circle cx="16" cy="20" r="10" stroke="currentColor" stroke-width="2" opacity="0.35"/>
+  <circle cx="16" cy="20" r="5.5" stroke="currentColor" stroke-width="2" opacity="0.7"/>
+  <path d="M16 3 C 12.5 8, 11 10.5, 11 13 a 5 5 0 0 0 10 0 C 21 10.5, 19.5 8, 16 3 Z" fill="currentColor"/>
+</svg>

@@ -1,8 +1,21 @@
 # Pramen Implementation Plan
 
-Status: ready to execute  
+Status: in execution  
 Companion to: [architecture.md](architecture.md)  
-Last reviewed: 2026-07-10
+Last reviewed: 2026-07-11
+
+## Status snapshot (2026-07-11)
+
+Authoritative per-task state lives in the mirrored GitHub issues; this
+snapshot orients a reader without leaving the file.
+
+| Area | State |
+| --- | --- |
+| Milestone T | T1.1–T1.5 done. T1.6: strategy decided (ADR 0005) and L1/L2 patterns proven in spike code and the Postgres sink test; shared fixtures not yet extracted. T1.7 not started. |
+| Phase 0 spikes | S1.1 offline legs done (ledger, crash recovery, protocol stubs; live Bedrock leg awaits credentials). S1.2 done: peak RSS flat (~184 MiB) while input doubles, ~3M rows/s. S1.3 done: binary COPY at 3.1x the `psql \copy` baseline, ADR 0001 confirmed. S1.4, S2.1, S2.2 not started. |
+| Group F | F1, F2, F3 done (spec + validation + JSON Schema artifact; bounded-channel runner with commit-safe shutdown; log formats + metrics registry). OTLP export and the JSONL event schema remain open on F3's issue. |
+| Group P1 | First runnable vertical merged: `pramen run` executes Parquet → SQL → Postgres end to end (verified with 200k rows). Slices of P1.1 (local Parquet source), P1.4 (append-mode COPY sink), P1.13 (per-batch SQL), and P1.15 (validate/explain/run) are in; the rest of P1 is open. |
+| Phases 2–3 | Not started. |
 
 This plan turns the architecture into ordered, parallelizable tasks. Every
 task has an owner-agnostic definition of done and, where it matters, a

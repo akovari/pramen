@@ -1,0 +1,7 @@
+packages:
+  - '.'
+
+# sharp and esbuild need their postinstall build scripts.
+allowBuilds:
+  esbuild: true
+  sharp: true

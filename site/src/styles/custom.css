@@ -1,0 +1,88 @@
+/* Pramen docs theme: cool spring-water accent over Starlight defaults. */
+
+:root {
+	--sl-color-accent-low: #0e2a33;
+	--sl-color-accent: #0e7490;
+	--sl-color-accent-high: #a5e3f1;
+	--pramen-flow: #22b8cf;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #d5f0f6;
+	--sl-color-accent: #0e7490;
+	--sl-color-accent-high: #164e5f;
+}
+
+/* Hero title gradient */
+.hero h1 {
+	background: linear-gradient(90deg, var(--sl-color-text) 20%, var(--pramen-flow) 100%);
+	-webkit-background-clip: text;
+	background-clip: text;
+	-webkit-text-fill-color: transparent;
+}
+
+/* Pipeline flow diagram (inline SVG) */
+.pramen-diagram {
+	width: 100%;
+	height: auto;
+	display: block;
+	margin: 1.5rem 0;
+}
+.pramen-diagram .box {
+	fill: var(--sl-color-gray-6);
+	stroke: var(--sl-color-gray-4);
+	stroke-width: 1;
+	rx: 8;
+}
+.pramen-diagram .box-accent {
+	fill: var(--sl-color-accent-low);
+	stroke: var(--sl-color-accent);
+	stroke-width: 1.25;
+}
+.pramen-diagram .label {
+	fill: var(--sl-color-text);
+	font: 600 13px var(--sl-font-system, ui-sans-serif);
+}
+.pramen-diagram .sublabel {
+	fill: var(--sl-color-gray-3);
+	font: 400 11px var(--sl-font-system, ui-sans-serif);
+}
+.pramen-diagram .flow {
+	stroke: var(--pramen-flow);
+	stroke-width: 2;
+	fill: none;
+	marker-end: url(#arrow);
+}
+.pramen-diagram .flow-dim {
+	stroke: var(--sl-color-gray-4);
+	stroke-dasharray: 5 4;
+	stroke-width: 1.5;
+	fill: none;
+}
+.pramen-diagram .arrowhead {
+	fill: var(--pramen-flow);
+}
+
+/* Stat strip on the landing page */
+.pramen-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+	gap: 1rem;
+	margin: 2rem 0;
+}
+.pramen-stat {
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 0.75rem;
+	padding: 1rem 1.25rem;
+	background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+}
+.pramen-stat strong {
+	display: block;
+	font-size: 1.6rem;
+	color: var(--sl-color-accent-high);
+	line-height: 1.2;
+}
+.pramen-stat span {
+	color: var(--sl-color-gray-3);
+	font-size: 0.85rem;
+}

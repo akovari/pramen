@@ -1,0 +1,61 @@
+---
+title: Architecture
+description: The shape of the system — one binary, five crates, a linear dataflow with a governed AI stage.
+---
+
+import PipelineFlow from '../../../components/PipelineFlow.astro';
+
+Pramen executes a pipeline as a chain of stages connected by bounded
+channels of Apache Arrow record batches:
+
+<PipelineFlow />
+
+## The stages
+
+**Sources** read Parquet (NDJSON planned) from local disk today, with
+remote object stores (S3, Azure Blob, GCS) on the roadmap. Reads are
+streaming and memory-bounded: a hard ceiling via DataFusion's spillable
+memory pool means peak memory does not grow with dataset size — measured
+flat at ~184 MiB while input doubled from 8M to 16M rows.
+
+**SQL transforms** run DataFusion SQL where the incoming batch stream is
+the table `input`. Filters, projections, and derivations execute at
+millions of rows per second on a laptop.
+
+**Semantic transforms** (`ai.extract`, `ai.classify` — in development) call
+language models as governed, schema-bound operations. They are privileged
+built-ins, not user code with network access: credentials, budgets,
+retries, and audit policy stay under runtime control.
+
+**Sinks** load PostgreSQL through the native binary `COPY` protocol —
+pure Rust, no libpq, no drivers — inside a single transaction that commits
+only when the run succeeds.
+
+## The workspace
+
+Five crates, and no more until proven otherwise:
+
+| Crate | Contents |
+| --- | --- |
+| `pramen` | The CLI: `validate`, `explain`, `run`, `ai` |
+| `pramen-core` | Pipeline spec, validation, dataflow runtime, observability |
+| `pramen-io` | Sources, SQL transform, database sinks |
+| `pramen-ai` | Provider adapters, inference ledger, budgets, validation |
+| `pramen-wasm` | Reserved for the post-v1 WebAssembly extension mechanism |
+
+## Design positions worth knowing
+
+- **SQL first, WASM later.** v1 deterministic transforms are SQL
+  expressions. Sandboxed WebAssembly components are the committed
+  extension mechanism for custom logic, sequenced after v1 so the first
+  release stays a ten-minute experience.
+- **Native COPY, not driver frameworks.** A pure-Rust binary COPY encoder
+  measured 3.1× faster than `psql \copy` — and keeps the binary static.
+  ADBC-based warehouse breadth is deferred until a real user needs it.
+- **At-least-once, honestly.** Delivery semantics are documented and
+  tested rather than hand-waved. Transactional loads make failed runs
+  invisible; idempotent replay strategies are part of the sink contract.
+
+The full design rationale — including the competitive analysis and the
+research questions behind the project — lives in the
+[architecture document](https://github.com/akovari/pramen/blob/main/docs/architecture.md).

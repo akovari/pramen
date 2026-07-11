@@ -1,0 +1,79 @@
+---
+title: Pramen
+description: A lean, columnar data movement runtime with governed LLM enrichment. One static binary, one YAML file, enriched rows in PostgreSQL.
+template: splash
+hero:
+  tagline: One static binary. One YAML file. Columnar data movement with governed LLM enrichment — from object storage into PostgreSQL, crash-safe and budgeted.
+  actions:
+    - text: Quickstart
+      link: /pramen/getting-started/quickstart/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/akovari/pramen
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import PipelineFlow from '../../components/PipelineFlow.astro';
+
+<PipelineFlow />
+
+<div class="pramen-stats">
+  <div class="pramen-stat"><strong>3.1×</strong><span>faster than `psql \copy` — native binary COPY, measured on 5M rows</span></div>
+  <div class="pramen-stat"><strong>~3M rows/s</strong><span>SQL filter + derivation throughput under a hard memory ceiling</span></div>
+  <div class="pramen-stat"><strong>100%</strong><span>AI result reuse on replay — completed inference is never re-billed</span></div>
+  <div class="pramen-stat"><strong>1</strong><span>static binary — no services, drivers, or toolchains to install</span></div>
+</div>
+
+## Why Pramen
+
+<CardGrid stagger>
+  <Card title="Columnar all the way through" icon="rocket">
+    Apache Arrow record batches move through sources, SQL transforms, and
+    sinks without row-by-row conversion. Backpressure is structural: memory
+    in flight is bounded no matter how large the input is.
+  </Card>
+  <Card title="Governed AI, not vibes" icon="approve-check">
+    Semantic transforms are schema-bound and validated. Every inference is
+    recorded in a durable, content-addressed ledger — a crash or re-run
+    reuses completed results instead of paying for them twice.
+  </Card>
+  <Card title="Spend control before dispatch" icon="seti:config">
+    Hard token budgets per record, enforced before a model is called.
+    Provider batch APIs are scheduled for you when latency allows, at batch
+    pricing.
+  </Card>
+  <Card title="Honest delivery semantics" icon="document">
+    At-least-once by default, loads inside a single transaction: a failed
+    run leaves your table untouched. The delivery contract is documented,
+    tested, and enforced by the runtime.
+  </Card>
+</CardGrid>
+
+## A pipeline is one file
+
+```yaml
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: enrich-tickets
+spec:
+  source:
+    type: object_store
+    url: /data/tickets/
+    format: { type: parquet }
+  transforms:
+    - id: normalize
+      type: sql
+      query: SELECT ticket_id, lower(trim(description)) AS description FROM input
+  sink:
+    type: postgres
+    target: support.tickets
+```
+
+```bash
+pramen validate pipeline.yaml   # every problem reported at once, with paths
+pramen explain pipeline.yaml    # the resolved plan
+pramen run pipeline.yaml        # bounded, transactional, Ctrl-C safe
+```

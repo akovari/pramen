@@ -1,0 +1,105 @@
+---
+title: Governed AI enrichment
+description: Schema-bound semantic transforms with a durable inference ledger, budgets, and validation.
+---
+
+:::caution[In development]
+The design below is spike-validated (durable ledger, crash recovery,
+provider adapters) and the production operators are being built now
+(P1.5–P1.12). This page describes the committed contract, not a shipped
+feature.
+:::
+
+Semantic transforms treat a language model call the way a database treats
+a write: as an operation with a **contract** — fixed inputs, a fixed
+instruction, a typed output schema, hard budgets, and a durable record.
+
+<svg class="pramen-diagram" viewBox="0 0 860 260" role="img" aria-label="Governed AI flow: work keys, ledger lookup, provider dispatch, validation">
+  <defs>
+    <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z" />
+    </marker>
+  </defs>
+
+  <rect class="box" x="20" y="30" width="150" height="64" rx="10" />
+  <text class="label" x="95" y="57" text-anchor="middle">Record</text>
+  <text class="sublabel" x="95" y="76" text-anchor="middle">input columns</text>
+
+  <rect class="box-accent" x="240" y="30" width="170" height="64" rx="10" />
+  <text class="label" x="325" y="57" text-anchor="middle">Work key</text>
+  <text class="sublabel" x="325" y="76" text-anchor="middle">hash(inputs + instruction + model + schema)</text>
+
+  <rect class="box-accent" x="480" y="30" width="150" height="64" rx="10" />
+  <text class="label" x="555" y="57" text-anchor="middle">Ledger lookup</text>
+  <text class="sublabel" x="555" y="76" text-anchor="middle">SQLite, WAL mode</text>
+
+  <rect class="box" x="700" y="10" width="140" height="56" rx="10" />
+  <text class="label" x="770" y="34" text-anchor="middle">Reuse</text>
+  <text class="sublabel" x="770" y="52" text-anchor="middle">zero cost</text>
+
+  <rect class="box" x="700" y="86" width="140" height="56" rx="10" />
+  <text class="label" x="770" y="110" text-anchor="middle">Dispatch</text>
+  <text class="sublabel" x="770" y="128" text-anchor="middle">online or batch</text>
+
+  <path class="flow" style="marker-end: url(#arrow3)" d="M 170 62 L 235 62" />
+  <path class="flow" style="marker-end: url(#arrow3)" d="M 410 62 L 475 62" />
+  <path class="flow" style="marker-end: url(#arrow3)" d="M 630 50 L 695 38" />
+  <path class="flow" style="marker-end: url(#arrow3)" d="M 630 74 L 695 105" />
+  <text class="sublabel" x="660" y="30" text-anchor="middle">hit</text>
+  <text class="sublabel" x="660" y="102" text-anchor="middle">miss</text>
+
+  <rect class="box-accent" x="480" y="170" width="360" height="64" rx="10" />
+  <text class="label" x="660" y="197" text-anchor="middle">Validate against the declared schema</text>
+  <text class="sublabel" x="660" y="216" text-anchor="middle">pass → typed columns · fail → fail | drop | review</text>
+  <path class="flow" style="marker-end: url(#arrow3)" d="M 770 142 L 770 165" />
+
+  <path class="flow-dim" d="M 475 202 C 380 202, 330 150, 328 98" />
+  <text class="sublabel" x="360" y="185" text-anchor="middle">result recorded before use</text>
+</svg>
+
+## The inference ledger
+
+Every unit of semantic work gets a **content-addressed work key**: a hash
+over the canonicalized inputs, instruction, model identity, output schema,
+and prompt revision. Before anything is sent to a provider, the ledger is
+consulted; after a result validates, it is recorded durably.
+
+The consequences fall out naturally:
+
+- **Crash safety.** Kill the process mid-run and restart: completed work is
+  found in the ledger and skipped. Measured in the spike: zero lost results
+  across kill points, 100% reuse on replay.
+- **Incremental re-enrichment.** Re-run over a grown dataset and only new
+  or changed records incur model cost. Change the prompt revision and
+  exactly the affected work re-executes.
+- **Provenance.** Every value can answer: which model, which prompt
+  revision, which provider request, how many tokens, validated against
+  which schema.
+
+Ledger overhead was measured at microseconds per work item — noise next to
+any model call.
+
+## Budgets and validation
+
+- **Budgets are enforced before dispatch**, not reported after: per-record
+  input/output token ceilings, and (coming with the operators) per-run cost
+  ceilings and circuit breakers on error and invalid-output spikes.
+- **Output is validated against the declared schema** — types,
+  nullability — and lands as properly typed Arrow columns, not a JSON
+  string you parse downstream. Invalid output follows an explicit policy:
+  `fail` the run, `drop` and count, or route to `review`.
+
+## Online and batch execution
+
+`execution: auto` lets the runtime choose between synchronous calls and
+provider **batch APIs** (Bedrock, OpenAI, and compatible), which typically
+price at ~50% of online rates. Batch jobs survive restarts: submitted work
+is reconciled by job and record ID rather than resubmitted.
+
+## Providers
+
+The provider layer is deliberately neutral: Amazon Bedrock (Converse) is
+the first hosted profile, with any OpenAI-compatible endpoint — including
+self-hosted vLLM for residency-constrained deployments — as the second.
+The same budgets, validation, ledger, and provenance apply identically to
+all of them.

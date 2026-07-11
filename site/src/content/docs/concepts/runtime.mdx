@@ -1,0 +1,83 @@
+---
+title: Runtime and delivery
+description: Bounded channels, structural backpressure, cooperative shutdown, and commit safety.
+---
+
+Every stage of a pipeline runs as its own task, connected to its neighbors
+by **bounded channels** of Arrow record batches.
+
+<svg class="pramen-diagram" viewBox="0 0 860 230" role="img" aria-label="Runtime model: stages connected by bounded channels with backpressure">
+  <defs>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="arrowhead" d="M 0 0 L 10 5 L 0 10 z" />
+    </marker>
+  </defs>
+  <rect class="box" x="20" y="40" width="140" height="70" rx="10" />
+  <text class="label" x="90" y="70" text-anchor="middle">Source task</text>
+  <text class="sublabel" x="90" y="90" text-anchor="middle">reads until blocked</text>
+
+  <rect class="box-accent" x="250" y="40" width="140" height="70" rx="10" />
+  <text class="label" x="320" y="70" text-anchor="middle">Transform task</text>
+  <text class="sublabel" x="320" y="90" text-anchor="middle">apply / finish</text>
+
+  <rect class="box" x="480" y="40" width="140" height="70" rx="10" />
+  <text class="label" x="550" y="70" text-anchor="middle">Sink task</text>
+  <text class="sublabel" x="550" y="90" text-anchor="middle">write … commit</text>
+
+  <rect class="box" x="700" y="40" width="140" height="70" rx="10" />
+  <text class="label" x="770" y="70" text-anchor="middle">PostgreSQL</text>
+  <text class="sublabel" x="770" y="90" text-anchor="middle">one transaction</text>
+
+  <path class="flow" style="marker-end: url(#arrow2)" d="M 160 75 L 245 75" />
+  <path class="flow" style="marker-end: url(#arrow2)" d="M 390 75 L 475 75" />
+  <path class="flow" style="marker-end: url(#arrow2)" d="M 620 75 L 695 75" />
+  <text class="sublabel" x="202" y="62" text-anchor="middle">cap N</text>
+  <text class="sublabel" x="432" y="62" text-anchor="middle">cap N</text>
+
+  <path class="flow-dim" d="M 550 130 C 550 175, 90 175, 90 115" />
+  <text class="sublabel" x="320" y="165" text-anchor="middle">full channel blocks the producer — backpressure, not buffering</text>
+
+  <rect class="box-accent" x="660" y="150" width="180" height="55" rx="10" />
+  <text class="label" x="750" y="173" text-anchor="middle">CancellationToken</text>
+  <text class="sublabel" x="750" y="191" text-anchor="middle">Ctrl-C / first failure</text>
+</svg>
+
+## Backpressure is structural
+
+A channel holds at most a configured number of batches. When the sink is
+slower than the source, the channel fills and the source **blocks on
+send** — no unbounded buffering, no load shedding, no special-case code.
+Memory in flight is bounded by channel capacity × batch size, derived from
+`runtime.maxInflightBytes` in the pipeline document.
+
+This is tested behaviorally: with a deliberately blocked sink, the source
+is verified to stall after filling the channels.
+
+## Failure and cancellation
+
+- **First failure wins.** A failing stage cancels a shared token *before*
+  its channels close, so downstream stages can always tell "upstream
+  finished" from "upstream failed". The user sees the root-cause error with
+  its stage id, never the teardown noise.
+- **Ctrl-C is cooperative.** External cancellation uses the same token;
+  every potentially blocking await in every stage races against it, so
+  shutdown is prompt even mid-batch.
+
+## Commit safety
+
+The sink finalizes its work (transaction commit, staging-table merge) only
+from an explicit `commit` step that runs **after** the input stream ended
+cleanly *and* nothing upstream failed:
+
+- run succeeds → one commit, rows become visible atomically;
+- any stage fails → no commit, the target table is untouched;
+- cancelled mid-run → no commit.
+
+## Delivery contract
+
+The v1 contract is **at-least-once**: a run that fails after partial
+progress is safe to re-run. With `mode: append` a successful run's rows
+appear exactly once because the whole load is one transaction;
+`mode: upsert` (staging + merge on key, in development) makes replays
+idempotent even across separately committed runs. Checkpointing for
+resumable runs over large inputs is in development (P1.3).
