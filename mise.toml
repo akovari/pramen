@@ -15,8 +15,11 @@ run = "cargo fmt --all"
 description = "Format check + clippy with warnings denied"
 run = [
     "cargo fmt --all --check",
-    "cargo clippy --workspace --all-targets -- -D warnings",
+    # Cargo-level warning denial (Rust 1.97+) instead of `-D warnings`:
+    # same strictness, but it never invalidates the build cache.
+    "cargo clippy --workspace --all-targets",
 ]
+env = { CARGO_BUILD_WARNINGS = "deny" }
 
 [tasks.test]
 description = "Run unit/integration tests and doc tests"

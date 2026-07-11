@@ -10,7 +10,10 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
+  # Rust 1.97+: cargo-level warning denial. Unlike `RUSTFLAGS: -D warnings`
+  # this does not change compiler flags, so it never invalidates the build
+  # cache. Older cargo (the MSRV job) ignores the unknown config key.
+  CARGO_BUILD_WARNINGS: deny
 
 jobs:
   lint:
@@ -22,7 +25,8 @@ jobs:
         run: rustup toolchain install && rustup component add clippy rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Warnings are denied via CARGO_BUILD_WARNINGS, not `-D warnings`.
+      - run: cargo clippy --workspace --all-targets
 
   test:
     name: Test (${{ matrix.os }})

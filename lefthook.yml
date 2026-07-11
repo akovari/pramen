@@ -7,4 +7,4 @@ pre-commit:
       run: cargo fmt --all --check
     - name: clippy
       glob: "*.rs"
-      run: cargo clippy --workspace --all-targets -- -D warnings
+      run: CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets
