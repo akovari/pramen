@@ -1,0 +1,19 @@
+# Standalone: spikes are disposable and deliberately outside the workspace
+# and its gates (see AGENTS.md).
+[workspace]
+
+[package]
+name = "s1-2-parquet-datafusion"
+version = "0.0.1"
+publish = false
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+datafusion = "50"
+futures-util = "0.3"
+memory-stats = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[profile.release]
+lto = "thin"

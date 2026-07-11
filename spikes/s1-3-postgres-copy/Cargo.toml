@@ -1,0 +1,20 @@
+# Standalone: spikes are disposable and deliberately outside the workspace
+# and its gates (see AGENTS.md).
+[workspace]
+
+[package]
+name = "s1-3-postgres-copy"
+version = "0.0.1"
+publish = false
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+arrow = "57"
+bytes = "1"
+futures-util = "0.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-postgres = "0.7"
+
+[profile.release]
+lto = "thin"
