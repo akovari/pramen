@@ -1,4 +1,5 @@
-# Pinned stable toolchain; MSRV (1.85) is declared in Cargo.toml and checked
+# Pinned stable toolchain; MSRV (1.86, set by datafusion) is declared in
+# Cargo.toml and checked
 # by a dedicated CI job with RUSTUP_TOOLCHAIN.
 [toolchain]
 channel = "1.96.0"
