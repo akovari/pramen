@@ -1,7 +1,7 @@
 //! Adapter for OpenAI-compatible chat-completions endpoints (vLLM, Ollama,
 //! llama.cpp server, and hosted OpenAI-protocol services).
 
-use super::{Capabilities, InferenceRequest, Provider, ProviderResponse};
+use super::{Capabilities, InferenceRequest, Provider, ProviderResponse, strip_fences};
 use crate::error::AiError;
 use serde::Deserialize;
 use serde_json::json;
@@ -57,16 +57,6 @@ impl OpenAiCompatProvider {
             message: message.to_string(),
         }
     }
-}
-
-/// Strip Markdown code fences some models wrap around JSON output.
-fn strip_fences(text: &str) -> &str {
-    let trimmed = text.trim();
-    let Some(inner) = trimmed.strip_prefix("```") else {
-        return trimmed;
-    };
-    let inner = inner.strip_prefix("json").unwrap_or(inner);
-    inner.strip_suffix("```").unwrap_or(inner).trim()
 }
 
 #[async_trait::async_trait]

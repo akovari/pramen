@@ -14,11 +14,13 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 datafusion = { workspace = true }
 futures = { workspace = true }
+object_store = { workspace = true }
 pramen-core = { path = "../pramen-core" }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "net"] }
 tokio-postgres = { workspace = true }
 tracing = { workspace = true }
+url = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

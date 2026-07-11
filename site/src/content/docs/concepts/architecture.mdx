@@ -22,7 +22,7 @@ flat at ~184 MiB while input doubled from 8M to 16M rows.
 the table `input`. Filters, projections, and derivations execute at
 millions of rows per second on a laptop.
 
-**Semantic transforms** (`ai.extract`, `ai.classify` — in development) call
+**Semantic transforms** (`ai.extract`, `ai.classify`) call
 language models as governed, schema-bound operations. They are privileged
 built-ins, not user code with network access: credentials, budgets,
 retries, and audit policy stay under runtime control.

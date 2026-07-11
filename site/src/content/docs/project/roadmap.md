@@ -13,15 +13,21 @@ This page is the honest summary.
 - **Pipeline document** (`pramen.dev/v1alpha1`): strict parsing, complete
   path-addressed validation, published JSON Schema.
 - **CLI**: `validate`, `explain` (text + JSON), `run`, `ai status`.
-- **End-to-end deterministic runs**: local Parquet or NDJSON → per-batch
-  DataFusion SQL → transactional binary `COPY` into PostgreSQL, with
-  bounded memory, backpressure, and Ctrl-C safety.
+- **End-to-end runs**: Parquet or NDJSON — local or `s3://` (S3 and
+  S3-compatible stores like MinIO) — → per-batch DataFusion SQL →
+  transactional binary `COPY` into PostgreSQL, with bounded memory,
+  backpressure, and Ctrl-C safety.
+- **Checkpointed incremental runs**: file-granular work units on a
+  crash-safe append-only store; replaying a finished run loads nothing,
+  a grown directory loads only new files (ADR 0006).
 - **Governed semantic transforms**: `ai.extract` / `ai.classify` on the
   production SQLite (WAL) inference ledger — content-addressed work keys,
   durable result reuse on replay, pre-dispatch input token budgets,
   provider-side output caps, strict typed output validation with
   `fail`/`drop`/`review` policies. Providers: `mock` (deterministic,
-  offline) and `openai-compat` (vLLM, Ollama, llama.cpp, hosted).
+  offline), `openai-compat` (vLLM, Ollama, llama.cpp, hosted), and
+  `bedrock` (Converse API, default credential chain, region pinning,
+  stub-tested offline per ADR 0005 — live acceptance pending credentials).
 - **Runtime guarantees**: commit-safety on failure (no partial loads),
   first-failure error attribution, prompt cooperative shutdown — all
   covered by behavioral tests.
@@ -31,19 +37,19 @@ This page is the honest summary.
 - **Durable inference ledger** (SQLite WAL): 100% result reuse on replay,
   zero results lost across crashes, microsecond overhead per item — now
   productionized in `pramen-ai`.
-- **Bedrock Converse** request/response handling proven against local
-  protocol stubs; the production adapter is next (P1.7).
 - **Bounded-memory scanning** and **binary COPY throughput** — see
   [measured results](/pramen/project/benchmarks/).
 
 ## In development (Phase 1)
 
-- Bedrock Converse online adapter (P1.7) and provider-batch execution
-  with restart reconciliation (P1.8).
-- Remote object stores (S3 first) (P1.1); checkpointing and resumable
-  runs (P1.3); upsert sink mode (P1.4).
+- Provider-batch execution with restart reconciliation (P1.8), developed
+  against a local fake batch service before any cloud spend.
+- Upsert sink mode (P1.4); remote work-unit enumeration for checkpointed
+  `s3://` sources (P1.1 remainder).
 - Per-run cost ceilings and error-spike circuit breakers (P1.11
   remainder); review-queue routing (X1.6).
+- The golden evaluation corpus and quality-cost frontier (S2.2), runnable
+  against local models first.
 - `run --smoke`, `ai evaluate`, and the measured ten-minute quickstart
   (P1.16–P1.18).
 - Fault-injection and benchmark suites (P1.19–P1.20).

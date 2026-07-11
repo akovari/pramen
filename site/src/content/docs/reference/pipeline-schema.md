@@ -85,7 +85,7 @@ Entirely optional.
 | --- | --- | --- |
 | `targetBatchBytes` | int | Target Arrow batch size; default 8 MiB |
 | `maxInflightBytes` | int | In-flight ceiling; default 256 MiB; must be ≥ `targetBatchBytes` |
-| `checkpoint.url` | string? | Checkpoint directory (execution planned, P1.3) |
+| `checkpoint.url` | string? | Checkpoint directory (local path or `file://`); enables incremental, resumable runs |
 
 ## Validation behavior
 

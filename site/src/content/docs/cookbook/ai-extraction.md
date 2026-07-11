@@ -5,9 +5,11 @@ description: Schema-bound, budget-capped semantic extraction with the durable in
 
 Governed semantic transforms are live: `ai.extract` and `ai.classify` run
 against the durable inference ledger with pre-dispatch budgets and strict
-output validation. Two providers ship today — `mock` (deterministic,
-offline, free — for dry-runs and tests) and `openai-compat` (vLLM, Ollama,
-llama.cpp, or any OpenAI-protocol endpoint). Amazon Bedrock is next (P1.7).
+output validation. Three providers ship today — `mock` (deterministic,
+offline, free — for dry-runs and tests), `openai-compat` (vLLM, Ollama,
+llama.cpp, or any OpenAI-protocol endpoint), and `bedrock` (Amazon Bedrock
+Converse, credentials from the AWS default chain, region pinned per model
+declaration).
 
 ## The scenario
 

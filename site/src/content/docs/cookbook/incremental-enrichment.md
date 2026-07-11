@@ -3,12 +3,10 @@ title: Incremental re-enrichment
 description: How content-addressed work keys turn recurring AI runs into pay-only-for-changes runs.
 ---
 
-:::caution[Planned]
-This recipe depends on the `ai.*` operators and the production inference
-ledger (P1.6, P1.12), currently in development. The ledger mechanics are
-already spike-validated: 100% reuse on replay, zero results lost across
-crashes.
-:::
+The two mechanisms this recipe relies on are both live: the inference
+ledger reuses every recorded result by content-addressed work key, and
+[checkpointing](/pramen/concepts/runtime/#checkpoints-and-incremental-runs)
+skips already-loaded source files entirely.
 
 ## The problem
 
@@ -41,9 +39,11 @@ processing.
 ## Operational patterns this enables
 
 **The daily enrichment run.** Schedule the same pipeline daily over the
-full (growing) dataset. Cost tracks new records only. Duplicate-heavy
-sources (retries, CDC replays) deduplicate for free — identical content is
-one work key.
+full (growing) dataset. With `runtime.checkpoint` set, already-loaded
+files are not even read again; new files' records that duplicate old
+content still reuse ledger results. Cost tracks new records only.
+Duplicate-heavy sources (retries, CDC replays) deduplicate for free —
+identical content is one work key.
 
 **Prompt iteration with a controlled blast radius.** The prompt revision is
 part of the key, so improving an instruction and re-running re-executes

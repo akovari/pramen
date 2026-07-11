@@ -46,16 +46,9 @@ export default defineConfig({
 						{ label: 'Filter and derive with SQL', slug: 'cookbook/filter-and-derive' },
 						{ label: 'Loading PostgreSQL fast', slug: 'cookbook/postgres-loading' },
 						{ label: 'Testing pipelines locally', slug: 'cookbook/local-testing' },
-						{
-							label: 'Budgeted AI extraction',
-							slug: 'cookbook/ai-extraction',
-							badge: { text: 'Planned', variant: 'caution' },
-						},
-						{
-							label: 'Incremental re-enrichment',
-							slug: 'cookbook/incremental-enrichment',
-							badge: { text: 'Planned', variant: 'caution' },
-						},
+						{ label: 'Budgeted AI extraction', slug: 'cookbook/ai-extraction' },
+						{ label: 'Incremental re-enrichment', slug: 'cookbook/incremental-enrichment' },
+						{ label: 'S3 and MinIO sources', slug: 'cookbook/s3-sources' },
 					],
 				},
 				{

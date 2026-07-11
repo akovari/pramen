@@ -41,20 +41,26 @@ pipeline: governed-semantic-enrichment
 
 ## `pramen run <file>`
 
-Validate, plan, and execute the pipeline. Parquet and NDJSON sources, SQL
-transforms, governed `ai.extract`/`ai.classify` steps (providers `mock`
-and `openai-compat`), and the Postgres sink run today; a pipeline using
-not-yet-shipped features (Bedrock, provider-batch execution, remote object
-stores) fails at plan time with a pointer to the tracking task, before
-touching any data.
+Validate, plan, and execute the pipeline. Parquet and NDJSON sources
+(local or `s3://`), SQL transforms, governed `ai.extract`/`ai.classify`
+steps (providers `mock`, `openai-compat`, `bedrock`), checkpointed
+incremental runs, and the Postgres sink run today; a pipeline using
+not-yet-shipped features (provider-batch execution, Azure/GCS) fails at
+plan time with a pointer to the tracking task, before touching any data.
 
 - The sink connection string comes from the environment variable named by
   `spec.sink.dsnEnv`.
+- S3 access is configured purely from the standard `AWS_*` environment
+  (see the [S3 recipe](/pramen/cookbook/s3-sources/)); Bedrock uses the
+  AWS default credential chain.
 - Semantic steps record every validated result in the inference ledger
   (`.pramen/ledger.sqlite`, or `PRAMEN_LEDGER_PATH`) before use; replays
   reuse recorded results instead of re-dispatching.
 - An `openai-compat` model reads its optional API key from
   `PRAMEN_OPENAI_API_KEY`.
+- With `runtime.checkpoint` set, completed source files are skipped and
+  newly consumed ones are durably recorded after the sink commits; a run
+  with nothing left to do reports `nothing to do` and exits successfully.
 - Ctrl-C cancels cooperatively; the transaction is rolled back and the
   target table is untouched.
 - On success, a one-line summary reports rows in/out, batches, bytes, and

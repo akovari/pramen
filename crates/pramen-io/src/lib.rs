@@ -16,5 +16,5 @@ mod source;
 mod sql;
 
 pub use postgres::PostgresCopySink;
-pub use source::{NdjsonSource, ParquetSource};
+pub use source::{NdjsonSource, ParquetSource, list_work_units};
 pub use sql::SqlTransform;

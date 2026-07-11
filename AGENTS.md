@@ -31,7 +31,8 @@ Everything runs through mise; CI runs the same tasks.
 ## Code standards
 
 - Pinned stable toolchain (`rust-toolchain.toml`), edition 2024.
-- `#![forbid(unsafe_code)]`; `clippy -D warnings`; `#![deny(missing_docs)]`
+- `#![forbid(unsafe_code)]`; clippy with `CARGO_BUILD_WARNINGS=deny`
+  (cargo-level warning denial, Rust 1.97+); `#![deny(missing_docs)]`
   on library crates.
 - No `unwrap`/`expect` outside tests; errors are typed and documented.
 - Secrets never appear in normalized plans, logs, or snapshots.
@@ -43,6 +44,10 @@ Everything runs through mise; CI runs the same tasks.
 - L2 database tests are env-guarded: set `PRAMEN_TEST_POSTGRES_DSN` to run
   them, unset to skip. A machine-local `mise.local.toml` (gitignored) is the
   right place for that variable when a local PostgreSQL is available.
+- L2 object-store tests are likewise guarded by `PRAMEN_TEST_S3_URL`
+  (e.g. `s3://pramen-test/events/`) with standard `AWS_*` variables pointing
+  at a local MinIO (`AWS_ENDPOINT=http://localhost:9000`,
+  `AWS_ALLOW_HTTP=true`).
 - Runtime environment variables: `PRAMEN_LEDGER_PATH` overrides the
   inference ledger location (default `.pramen/ledger.sqlite`), and
   `PRAMEN_OPENAI_API_KEY` supplies the optional key for `openai-compat`

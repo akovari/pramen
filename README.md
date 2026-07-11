@@ -114,15 +114,20 @@ Early implementation; no stable public API yet. What runs today:
 - `pramen validate` and `pramen explain` accept the versioned v1alpha1
   pipeline document, report every validation issue with its path, and ship a
   [generated JSON Schema](docs/schema/pipeline.v1alpha1.schema.json);
-- `pramen run` executes pipelines end to end: local Parquet or NDJSON →
-  per-batch DataFusion SQL → transactional binary `COPY` into PostgreSQL,
-  with bounded channels, backpressure, Ctrl-C cancellation, and a run
-  summary (see [examples/local-parquet-to-postgres.yaml](examples/local-parquet-to-postgres.yaml));
+- `pramen run` executes pipelines end to end: Parquet or NDJSON — local or
+  `s3://` (S3-compatible stores like MinIO included) — → per-batch
+  DataFusion SQL → transactional binary `COPY` into PostgreSQL, with
+  bounded channels, backpressure, Ctrl-C cancellation, and a run summary
+  (see [examples/local-parquet-to-postgres.yaml](examples/local-parquet-to-postgres.yaml));
+- checkpointed incremental runs (ADR 0006): file-granular work units on a
+  crash-safe append-only store — replaying a finished run loads nothing, a
+  grown directory loads only new files;
 - governed semantic transforms run today: `ai.extract` / `ai.classify` on
   the durable SQLite (WAL) inference ledger — content-addressed work keys,
   result reuse on replay, pre-dispatch token budgets, and strict typed
-  output validation — with the deterministic `mock` provider and any
-  OpenAI-compatible endpoint (vLLM, Ollama, llama.cpp); see
+  output validation — with three providers: deterministic `mock`, any
+  OpenAI-compatible endpoint (vLLM, Ollama, llama.cpp), and Amazon Bedrock
+  Converse (stub-tested offline per ADR 0005); see
   [examples/local-tickets-ai-classify.yaml](examples/local-tickets-ai-classify.yaml)
   and `pramen ai status`;
 - the riskiest boundaries are spike-validated with measured results in
@@ -131,8 +136,8 @@ Early implementation; no stable public API yet. What runs today:
   ~3M rows/s (S1.2), and native binary `COPY` at 3.1x the `psql \copy`
   baseline (S1.3).
 
-Bedrock adapters, provider-batch execution, remote object stores, and
-checkpointing are in progress on the
+Provider-batch execution with restart reconciliation, upsert sinks, and
+the golden evaluation corpus are next on the
 [Phase 1 workstreams](docs/implementation-plan.md).
 
 Read the [product and architecture direction](docs/architecture.md) for the
@@ -178,15 +183,16 @@ conventions live in [AGENTS.md](AGENTS.md).
 
 ## Immediate next step
 
-The remaining risk spikes and Phase 1 workstreams, in order:
+The remaining risk spikes and Phase 1 workstreams, in order (each is
+developed local-first per ADR 0005; cloud spend only confirms, never
+unblocks):
 
-1. live Bedrock Converse leg of the ledger spike (needs AWS credentials) and
-   the Bedrock batch + crash-reconciliation spike (S2.1);
-2. the golden evaluation corpus and model quality-cost frontier (S2.2);
-3. `ai.extract` / `ai.classify` operators on the production ledger, budgets,
-   and validation layer (P1.6, P1.10–P1.12);
-4. NDJSON and remote object-store sources, checkpointing, and at-least-once
-   delivery tests (P1.1–P1.3, P1.14);
+1. provider-batch execution with crash reconciliation (P1.8) against the
+   local fake batch service, then the S2.1 spike numbers on real Bedrock;
+2. the golden evaluation corpus and model quality-cost frontier (S2.2),
+   against local models first;
+3. upsert sink mode (P1.4) and at-least-once delivery tests (P1.14);
+4. per-run cost ceilings and circuit breakers (P1.11 remainder);
 5. the WASM WIT component round-trip spike, gating the extensibility
    milestone, not v1 (S1.4).
 

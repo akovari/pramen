@@ -8,9 +8,11 @@
 //! (vLLM, Ollama, llama.cpp, or any OpenAI-compatible endpoint). Amazon
 //! Bedrock arrives with P1.7.
 
+mod bedrock;
 mod mock;
 mod openai_compat;
 
+pub use bedrock::BedrockProvider;
 pub use mock::MockProvider;
 pub use openai_compat::OpenAiCompatProvider;
 
@@ -54,6 +56,16 @@ pub struct Capabilities {
     pub structured_output: bool,
     /// Reports token usage in responses.
     pub token_accounting: bool,
+}
+
+/// Strip Markdown code fences some models wrap around JSON output.
+pub(crate) fn strip_fences(text: &str) -> &str {
+    let trimmed = text.trim();
+    let Some(inner) = trimmed.strip_prefix("```") else {
+        return trimmed;
+    };
+    let inner = inner.strip_prefix("json").unwrap_or(inner);
+    inner.strip_suffix("```").unwrap_or(inner).trim()
 }
 
 /// A model backend adapter.

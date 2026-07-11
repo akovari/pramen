@@ -1,9 +1,9 @@
 //! Core Pramen types: pipeline specifications, plans, the dataflow runtime,
 //! bounded channels, checkpoints, and observability.
 //!
-//! See `docs/architecture.md` for the design this crate implements. The
-//! crate is a skeleton until the Phase 1 foundation tasks (F1–F3) land.
+//! See `docs/architecture.md` for the design this crate implements.
 
+pub mod checkpoint;
 pub mod observe;
 pub mod runtime;
 pub mod spec;

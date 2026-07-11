@@ -41,7 +41,8 @@ that inference has to be auditable, budgeted, and restart-safe.
 
 Pramen is in early implementation and moving fast. Deterministic pipelines
 (Parquet → SQL → PostgreSQL) run end to end today; semantic transforms,
-NDJSON, remote object stores, and checkpointing are in active development.
+Provider-batch execution, upsert sinks, and Azure/GCS are in active
+development.
 The [status and roadmap](/pramen/project/roadmap/) page tracks exactly what
 works now, and every performance claim on this site links to a
 [measured result](/pramen/project/benchmarks/).

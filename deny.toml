@@ -8,6 +8,14 @@ ignore = [
     # `paste` is unmaintained but trivially small and compile-time only; it
     # arrives via datafusion/arrow. Drop this when upstream migrates.
     "RUSTSEC-2024-0436",
+    # quick-xml < 0.41 CPU/memory DoS via crafted XML. Reaches us only as
+    # object_store's parser for S3 list/error responses, i.e. XML from the
+    # operator-configured endpoint, not arbitrary untrusted input; impact is
+    # DoS only. datafusion 50 pins object_store 0.12 (quick-xml 0.38); the
+    # fix arrives with the object_store >= 0.13 / next datafusion major
+    # upgrade. Drop both entries then.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]
 
 [licenses]

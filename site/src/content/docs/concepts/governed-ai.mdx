@@ -91,15 +91,18 @@ any model call.
 
 ## Online and batch execution
 
-`execution: auto` lets the runtime choose between synchronous calls and
-provider **batch APIs** (Bedrock, OpenAI, and compatible), which typically
-price at ~50% of online rates. Batch jobs survive restarts: submitted work
-is reconciled by job and record ID rather than resubmitted.
+Execution is online today (`auto` resolves to online). Provider **batch
+APIs** (Bedrock, OpenAI, and compatible) typically price at ~50% of
+online rates; the batch path with restart reconciliation — submitted work
+reconciled by job and record ID rather than resubmitted — is P1.8, being
+developed against a local fake batch service before any cloud spend.
 
 ## Providers
 
-The provider layer is deliberately neutral: Amazon Bedrock (Converse) is
-the first hosted profile, with any OpenAI-compatible endpoint — including
-self-hosted vLLM for residency-constrained deployments — as the second.
-The same budgets, validation, ledger, and provenance apply identically to
-all of them.
+The provider layer is deliberately neutral, and three adapters ship
+today: `mock` (deterministic offline output for dry-runs and tests),
+`openai-compat` (any OpenAI-protocol endpoint — including self-hosted
+vLLM or Ollama for residency-constrained deployments), and `bedrock`
+(Amazon Bedrock Converse, AWS default credential chain, region pinned per
+model declaration). The same budgets, validation, ledger, and provenance
+apply identically to all of them; an adapter only translates requests.
