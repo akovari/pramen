@@ -114,18 +114,25 @@ Early implementation; no stable public API yet. What runs today:
 - `pramen validate` and `pramen explain` accept the versioned v1alpha1
   pipeline document, report every validation issue with its path, and ship a
   [generated JSON Schema](docs/schema/pipeline.v1alpha1.schema.json);
-- `pramen run` executes deterministic pipelines end to end: local Parquet →
+- `pramen run` executes pipelines end to end: local Parquet or NDJSON →
   per-batch DataFusion SQL → transactional binary `COPY` into PostgreSQL,
   with bounded channels, backpressure, Ctrl-C cancellation, and a run
   summary (see [examples/local-parquet-to-postgres.yaml](examples/local-parquet-to-postgres.yaml));
+- governed semantic transforms run today: `ai.extract` / `ai.classify` on
+  the durable SQLite (WAL) inference ledger — content-addressed work keys,
+  result reuse on replay, pre-dispatch token budgets, and strict typed
+  output validation — with the deterministic `mock` provider and any
+  OpenAI-compatible endpoint (vLLM, Ollama, llama.cpp); see
+  [examples/local-tickets-ai-classify.yaml](examples/local-tickets-ai-classify.yaml)
+  and `pramen ai status`;
 - the riskiest boundaries are spike-validated with measured results in
   [docs/spikes/](docs/spikes/): durable SQLite inference ledger with 100%
   result reuse and crash recovery (S1.1), bounded-memory Parquet + SQL at
   ~3M rows/s (S1.2), and native binary `COPY` at 3.1x the `psql \copy`
   baseline (S1.3).
 
-Semantic (`ai.*`) transforms, NDJSON, remote object stores, checkpointing,
-and provider adapters are in progress on the
+Bedrock adapters, provider-batch execution, remote object stores, and
+checkpointing are in progress on the
 [Phase 1 workstreams](docs/implementation-plan.md).
 
 Read the [product and architecture direction](docs/architecture.md) for the

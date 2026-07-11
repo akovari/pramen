@@ -5,4 +5,5 @@ lcov.info
 .env.*
 .DS_Store
 mise.local.toml
+/.pramen
 /spikes/**/target

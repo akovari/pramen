@@ -1,9 +1,9 @@
-//! The Parquet object-store source.
+//! The file sources: Parquet and NDJSON.
 
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::execution::memory_pool::FairSpillPool;
 use datafusion::execution::runtime_env::RuntimeEnvBuilder;
-use datafusion::prelude::{ParquetReadOptions, SessionConfig, SessionContext};
+use datafusion::prelude::{NdJsonReadOptions, ParquetReadOptions, SessionConfig, SessionContext};
 use futures::StreamExt;
 use pramen_core::runtime::{Source, StageError};
 use std::sync::Arc;
@@ -50,6 +50,70 @@ impl ParquetSource {
             .map_err(StageError::external)?;
         let stream = frame.execute_stream().await.map_err(StageError::external)?;
         Ok(Self { stream })
+    }
+}
+
+/// Streams Arrow batches from newline-delimited JSON files under a URL.
+///
+/// The schema is inferred from a bounded prefix of the data (the first
+/// 1000 records), so inference cost does not grow with dataset size.
+/// Memory bounding and URL handling match [`ParquetSource`].
+pub struct NdjsonSource {
+    stream: SendableRecordBatchStream,
+}
+
+impl NdjsonSource {
+    /// Number of leading records used for schema inference.
+    const SCHEMA_INFER_RECORDS: usize = 1000;
+
+    /// Open the NDJSON data under `url`, bounding scan memory to
+    /// `memory_limit_bytes` and emitting batches of at most
+    /// `batch_size_rows`.
+    ///
+    /// A directory URL scans files with the `.ndjson` extension; a file
+    /// URL uses the file's own extension (`.ndjson`, `.jsonl`, `.json`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StageError`] when the URL scheme is unsupported or the
+    /// files cannot be opened or planned.
+    pub async fn open(
+        url: &str,
+        memory_limit_bytes: usize,
+        batch_size_rows: usize,
+    ) -> Result<Self, StageError> {
+        let path = local_path(url)?;
+        let extension = std::path::Path::new(&path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map_or_else(|| ".ndjson".to_owned(), |e| format!(".{e}"));
+        let runtime = RuntimeEnvBuilder::new()
+            .with_memory_pool(Arc::new(FairSpillPool::new(
+                memory_limit_bytes.max(16 * 1024 * 1024),
+            )))
+            .build_arc()
+            .map_err(StageError::external)?;
+        let config = SessionConfig::new().with_batch_size(batch_size_rows.max(1));
+        let ctx = SessionContext::new_with_config_rt(config, runtime);
+        let mut options = NdJsonReadOptions::default().file_extension(&extension);
+        options.schema_infer_max_records = Self::SCHEMA_INFER_RECORDS;
+        let frame = ctx
+            .read_json(path, options)
+            .await
+            .map_err(StageError::external)?;
+        let stream = frame.execute_stream().await.map_err(StageError::external)?;
+        Ok(Self { stream })
+    }
+}
+
+#[async_trait::async_trait]
+impl Source for NdjsonSource {
+    async fn next_batch(&mut self) -> Result<Option<arrow::record_batch::RecordBatch>, StageError> {
+        match self.stream.next().await {
+            None => Ok(None),
+            Some(Ok(batch)) => Ok(Some(batch)),
+            Some(Err(error)) => Err(StageError::external(error)),
+        }
     }
 }
 
@@ -113,6 +177,52 @@ mod tests {
             rows += batch.num_rows();
         }
         assert_eq!(rows, 2000);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn ndjson_streams_rows_with_inferred_schema() {
+        let dir = std::env::temp_dir().join(format!("pramen-ndjson-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut lines = String::new();
+        for i in 0..500 {
+            lines.push_str(&format!(
+                "{{\"id\": {i}, \"description\": \"ticket {i}\", \"amount\": {}.5}}\n",
+                i * 2
+            ));
+        }
+        std::fs::write(dir.join("data.ndjson"), lines).unwrap();
+
+        let mut source = NdjsonSource::open(dir.to_str().unwrap(), 64 << 20, 128)
+            .await
+            .unwrap();
+        let mut rows = 0;
+        let mut columns = 0;
+        while let Some(batch) = source.next_batch().await.unwrap() {
+            assert!(batch.num_rows() <= 128, "batch size bound violated");
+            rows += batch.num_rows();
+            columns = batch.num_columns();
+        }
+        assert_eq!(rows, 500);
+        assert_eq!(columns, 3, "id, description, amount inferred");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn ndjson_single_file_uses_its_own_extension() {
+        let dir = std::env::temp_dir().join(format!("pramen-jsonl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("data.jsonl");
+        std::fs::write(&file, "{\"v\": 1}\n{\"v\": 2}\n").unwrap();
+
+        let mut source = NdjsonSource::open(file.to_str().unwrap(), 64 << 20, 128)
+            .await
+            .unwrap();
+        let mut rows = 0;
+        while let Some(batch) = source.next_batch().await.unwrap() {
+            rows += batch.num_rows();
+        }
+        assert_eq!(rows, 2);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

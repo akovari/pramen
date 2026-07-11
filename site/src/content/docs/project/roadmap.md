@@ -12,30 +12,38 @@ This page is the honest summary.
 
 - **Pipeline document** (`pramen.dev/v1alpha1`): strict parsing, complete
   path-addressed validation, published JSON Schema.
-- **CLI**: `validate`, `explain` (text + JSON), `run` for deterministic
-  pipelines.
-- **End-to-end deterministic runs**: local Parquet → per-batch DataFusion
-  SQL → transactional binary `COPY` into PostgreSQL, with bounded memory,
-  backpressure, and Ctrl-C safety.
+- **CLI**: `validate`, `explain` (text + JSON), `run`, `ai status`.
+- **End-to-end deterministic runs**: local Parquet or NDJSON → per-batch
+  DataFusion SQL → transactional binary `COPY` into PostgreSQL, with
+  bounded memory, backpressure, and Ctrl-C safety.
+- **Governed semantic transforms**: `ai.extract` / `ai.classify` on the
+  production SQLite (WAL) inference ledger — content-addressed work keys,
+  durable result reuse on replay, pre-dispatch input token budgets,
+  provider-side output caps, strict typed output validation with
+  `fail`/`drop`/`review` policies. Providers: `mock` (deterministic,
+  offline) and `openai-compat` (vLLM, Ollama, llama.cpp, hosted).
 - **Runtime guarantees**: commit-safety on failure (no partial loads),
   first-failure error attribution, prompt cooperative shutdown — all
   covered by behavioral tests.
 
-## Spike-validated (design proven, productionization underway)
+## Spike-validated (design proven)
 
 - **Durable inference ledger** (SQLite WAL): 100% result reuse on replay,
-  zero results lost across crashes, microsecond overhead per item.
-- **Provider adapters**: Bedrock Converse and OpenAI-compatible request/
-  response handling proven against local protocol stubs.
+  zero results lost across crashes, microsecond overhead per item — now
+  productionized in `pramen-ai`.
+- **Bedrock Converse** request/response handling proven against local
+  protocol stubs; the production adapter is next (P1.7).
 - **Bounded-memory scanning** and **binary COPY throughput** — see
   [measured results](/pramen/project/benchmarks/).
 
 ## In development (Phase 1)
 
-- `ai.extract` / `ai.classify` operators on the production ledger, with
-  budgets, circuit breakers, and schema validation (P1.5–P1.12).
-- NDJSON source; remote object stores (S3 first) (P1.1–P1.2).
-- Checkpointing and resumable runs (P1.3); upsert sink mode (P1.4).
+- Bedrock Converse online adapter (P1.7) and provider-batch execution
+  with restart reconciliation (P1.8).
+- Remote object stores (S3 first) (P1.1); checkpointing and resumable
+  runs (P1.3); upsert sink mode (P1.4).
+- Per-run cost ceilings and error-spike circuit breakers (P1.11
+  remainder); review-queue routing (X1.6).
 - `run --smoke`, `ai evaluate`, and the measured ten-minute quickstart
   (P1.16–P1.18).
 - Fault-injection and benchmark suites (P1.19–P1.20).

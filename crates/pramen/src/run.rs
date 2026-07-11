@@ -1,14 +1,26 @@
 //! The `pramen run` command: plan a spec into concrete stages and execute.
 
+use pramen_ai::ledger::Ledger;
+use pramen_ai::operator::SemanticTransform;
+use pramen_ai::provider::{MockProvider, OpenAiCompatProvider, Provider};
 use pramen_core::observe::RunMetrics;
 use pramen_core::runtime::{self, RunOptions, Sink, Source, Transform};
-use pramen_core::spec::{FormatSpec, PipelineSpec, SinkSpec, SourceSpec, TransformSpec};
+use pramen_core::spec::{
+    AiTransform, FormatSpec, ModelSpec, PipelineSpec, SinkSpec, SourceSpec, TransformSpec,
+};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 /// Rows per Arrow batch requested from sources.
 const BATCH_SIZE_ROWS: usize = 8192;
+
+/// Environment variable overriding the inference ledger location.
+const LEDGER_PATH_ENV: &str = "PRAMEN_LEDGER_PATH";
+
+/// Default inference ledger location, relative to the working directory.
+const DEFAULT_LEDGER_PATH: &str = ".pramen/ledger.sqlite";
 
 /// Execute `spec` to completion, honoring Ctrl-C.
 ///
@@ -88,7 +100,14 @@ async fn plan_source(spec: &PipelineSpec) -> Result<Box<dyn Source>, String> {
                 .map_err(|error| format!("source: {error}"))?;
             Ok(Box::new(source))
         }
-        FormatSpec::Ndjson => Err("NDJSON sources are not implemented yet (P1.2)".to_owned()),
+        FormatSpec::Ndjson => {
+            let memory_limit =
+                usize::try_from(spec.spec.runtime.max_inflight_bytes).unwrap_or(256 * 1024 * 1024);
+            let source = pramen_io::NdjsonSource::open(url, memory_limit, BATCH_SIZE_ROWS)
+                .await
+                .map_err(|error| format!("source: {error}"))?;
+            Ok(Box::new(source))
+        }
     }
 }
 
@@ -104,12 +123,66 @@ fn plan_transforms(spec: &PipelineSpec) -> Result<Vec<PlannedTransform>, String>
                 sql.id.clone(),
                 Box::new(pramen_io::SqlTransform::new(&sql.query)) as Box<dyn Transform>,
             )),
-            TransformSpec::AiExtract(ai) | TransformSpec::AiClassify(ai) => Err(format!(
-                "transform `{}`: semantic transforms are not implemented yet (P1.12)",
-                ai.id
-            )),
+            TransformSpec::AiExtract(ai) => plan_semantic("ai.extract", ai, spec),
+            TransformSpec::AiClassify(ai) => plan_semantic("ai.classify", ai, spec),
         })
         .collect()
+}
+
+/// Build one governed semantic transform: resolve the model reference to a
+/// provider adapter and open a handle to the shared inference ledger.
+fn plan_semantic(
+    operation: &str,
+    ai: &AiTransform,
+    spec: &PipelineSpec,
+) -> Result<PlannedTransform, String> {
+    let model = spec.spec.models.get(&ai.model).ok_or_else(|| {
+        format!(
+            "transform `{}`: model `{}` is not declared under spec.models",
+            ai.id, ai.model
+        )
+    })?;
+    let provider = plan_provider(&ai.id, model)?;
+    let ledger =
+        Ledger::open(&ledger_path()).map_err(|error| format!("transform `{}`: {error}", ai.id))?;
+    let transform = SemanticTransform::new(operation, ai.clone(), provider, &model.model, ledger)
+        .map_err(|error| format!("transform `{}`: {error}", ai.id))?;
+    Ok((ai.id.clone(), Box::new(transform) as Box<dyn Transform>))
+}
+
+fn plan_provider(transform_id: &str, model: &ModelSpec) -> Result<Arc<dyn Provider>, String> {
+    match model.provider.as_str() {
+        "mock" => Ok(Arc::new(MockProvider::new())),
+        "openai-compat" => {
+            let endpoint = model.endpoint.as_deref().ok_or_else(|| {
+                format!(
+                    "transform `{transform_id}`: provider `openai-compat` requires an `endpoint` \
+                     (e.g. http://localhost:11434/v1 for Ollama)"
+                )
+            })?;
+            let api_key = std::env::var("PRAMEN_OPENAI_API_KEY").ok();
+            Ok(Arc::new(OpenAiCompatProvider::new(
+                endpoint,
+                &model.model,
+                api_key,
+            )))
+        }
+        "bedrock" => Err(format!(
+            "transform `{transform_id}`: the Bedrock adapter is not implemented yet (P1.7); \
+             use `openai-compat` (vLLM/Ollama) or `mock`"
+        )),
+        other => Err(format!(
+            "transform `{transform_id}`: unknown provider `{other}` \
+             (available: mock, openai-compat)"
+        )),
+    }
+}
+
+/// The inference ledger location: `PRAMEN_LEDGER_PATH` or
+/// `.pramen/ledger.sqlite` under the working directory.
+pub fn ledger_path() -> PathBuf {
+    std::env::var(LEDGER_PATH_ENV)
+        .map_or_else(|_| PathBuf::from(DEFAULT_LEDGER_PATH), PathBuf::from)
 }
 
 async fn plan_sink(spec: &PipelineSpec) -> Result<Box<dyn Sink>, String> {

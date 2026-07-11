@@ -43,6 +43,10 @@ Everything runs through mise; CI runs the same tasks.
 - L2 database tests are env-guarded: set `PRAMEN_TEST_POSTGRES_DSN` to run
   them, unset to skip. A machine-local `mise.local.toml` (gitignored) is the
   right place for that variable when a local PostgreSQL is available.
+- Runtime environment variables: `PRAMEN_LEDGER_PATH` overrides the
+  inference ledger location (default `.pramen/ledger.sqlite`), and
+  `PRAMEN_OPENAI_API_KEY` supplies the optional key for `openai-compat`
+  models.
 - Conventional commits.
 
 ## Vocabulary discipline

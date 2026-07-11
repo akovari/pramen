@@ -41,13 +41,20 @@ pipeline: governed-semantic-enrichment
 
 ## `pramen run <file>`
 
-Validate, plan, and execute the pipeline. Deterministic pipelines
-(Parquet source, SQL transforms, Postgres sink) run today; a pipeline
-using not-yet-shipped features fails at plan time with a pointer to the
-tracking task, before touching any data.
+Validate, plan, and execute the pipeline. Parquet and NDJSON sources, SQL
+transforms, governed `ai.extract`/`ai.classify` steps (providers `mock`
+and `openai-compat`), and the Postgres sink run today; a pipeline using
+not-yet-shipped features (Bedrock, provider-batch execution, remote object
+stores) fails at plan time with a pointer to the tracking task, before
+touching any data.
 
 - The sink connection string comes from the environment variable named by
   `spec.sink.dsnEnv`.
+- Semantic steps record every validated result in the inference ledger
+  (`.pramen/ledger.sqlite`, or `PRAMEN_LEDGER_PATH`) before use; replays
+  reuse recorded results instead of re-dispatching.
+- An `openai-compat` model reads its optional API key from
+  `PRAMEN_OPENAI_API_KEY`.
 - Ctrl-C cancels cooperatively; the transaction is rolled back and the
   target table is untouched.
 - On success, a one-line summary reports rows in/out, batches, bytes, and
@@ -55,8 +62,11 @@ tracking task, before touching any data.
 
 Planned flags: `--smoke` (record cap + cheapest model + hard cost ceiling).
 
-## `pramen ai`
+## `pramen ai status [--ledger <path>]`
 
-AI governance utilities — evaluation against a golden corpus
-(`ai evaluate`), review-queue workflows (`ai review`). Ships with the AI
-workstream.
+Show the inference ledger's work-item counts by state (pending, submitted,
+completed, failed). Defaults to `$PRAMEN_LEDGER_PATH` or
+`.pramen/ledger.sqlite`.
+
+Planned subcommands: `ai evaluate` (golden-corpus metrics), `ai review`
+(review-queue workflow).

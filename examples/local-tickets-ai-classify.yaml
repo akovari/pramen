@@ -1,0 +1,56 @@
+# A fully local, runnable governed-AI pipeline: NDJSON tickets on disk,
+# one SQL step, one governed ai.classify step (deterministic mock provider,
+# no network, no cost), native COPY into PostgreSQL.
+#
+# Every classification is recorded in the durable inference ledger
+# (.pramen/ledger.sqlite by default); re-running the pipeline reuses
+# recorded results instead of re-dispatching. Swap the model's provider to
+# `openai-compat` with an `endpoint` (e.g. a local Ollama) for real
+# inference under the same governance.
+#
+#   export PRAMEN_POSTGRES_DSN=postgres://pramen:pramen@localhost:5432/pramen_dev
+#   pramen run examples/local-tickets-ai-classify.yaml
+#   pramen ai status
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: local-tickets-ai-classify
+spec:
+  models:
+    classifier:
+      provider: mock
+      model: mock-1
+  source:
+    type: object_store
+    url: /tmp/pramen-ai-input
+    format:
+      type: ndjson
+  transforms:
+    - id: clean
+      type: sql
+      query: >
+        SELECT id, description
+        FROM input
+        WHERE description IS NOT NULL AND length(description) > 3
+    - id: classify
+      type: ai.classify
+      model: classifier
+      inputs: [description]
+      instruction: >
+        Classify the support ticket into a category and estimate a
+        confidence score between 0 and 1.
+      output:
+        fields:
+          - name: category
+            type: utf8
+          - name: confidence
+            type: float64
+      validation:
+        onInvalid: fail
+      budget:
+        maxInputTokensPerRecord: 2048
+        maxOutputTokensPerRecord: 256
+  sink:
+    type: postgres
+    target: analytics.tickets_classified
+    mode: append

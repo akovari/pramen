@@ -3,8 +3,9 @@
 //! This crate provides the concrete [`pramen_core::runtime`] stage
 //! implementations for the lean v1 profile:
 //!
-//! - [`ParquetSource`]: streams Arrow batches out of Parquet files via
-//!   DataFusion's bounded, spillable execution;
+//! - [`ParquetSource`] / [`NdjsonSource`]: stream Arrow batches out of
+//!   Parquet or newline-delimited JSON files via DataFusion's bounded,
+//!   spillable execution;
 //! - [`SqlTransform`]: per-batch DataFusion SQL where the incoming batch is
 //!   visible as the table `input`;
 //! - [`PostgresCopySink`]: native binary `COPY` into PostgreSQL inside a
@@ -15,5 +16,5 @@ mod source;
 mod sql;
 
 pub use postgres::PostgresCopySink;
-pub use source::ParquetSource;
+pub use source::{NdjsonSource, ParquetSource};
 pub use sql::SqlTransform;

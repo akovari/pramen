@@ -1,8 +1,8 @@
 //! The `pramen` CLI.
 //!
-//! v1 surface: `validate`, `explain`, `run`, `ai`. The first three are
-//! live for deterministic pipelines; `ai` lands with the Phase 1 AI
-//! workstream.
+//! v1 surface: `validate`, `explain`, `run`, `ai`. Pipelines may combine
+//! deterministic SQL steps with governed semantic transforms backed by the
+//! durable inference ledger (`pramen ai status` inspects it).
 
 mod run;
 
@@ -69,8 +69,21 @@ enum Command {
         /// Path to the pipeline YAML document.
         file: PathBuf,
     },
-    /// AI governance utilities (not yet implemented).
-    Ai,
+    /// AI governance utilities.
+    Ai {
+        #[command(subcommand)]
+        command: AiCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum AiCommand {
+    /// Show the inference ledger's work-item counts by state.
+    Status {
+        /// Ledger path (defaults to $PRAMEN_LEDGER_PATH or .pramen/ledger.sqlite).
+        #[arg(long)]
+        ledger: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -117,8 +130,29 @@ fn main() -> ExitCode {
             },
             Err(exit) => exit,
         },
-        Command::Ai => {
-            eprintln!("pramen: `ai` is not implemented yet (Phase 1 AI workstream)");
+        Command::Ai {
+            command: AiCommand::Status { ledger },
+        } => ai_status(ledger),
+    }
+}
+
+fn ai_status(ledger: Option<PathBuf>) -> ExitCode {
+    let path = ledger.unwrap_or_else(run::ledger_path);
+    if !path.exists() {
+        println!("no ledger at {} (nothing recorded yet)", path.display());
+        return ExitCode::SUCCESS;
+    }
+    match pramen_ai::ledger::Ledger::open(&path).and_then(|l| l.counts()) {
+        Ok((pending, submitted, completed, failed)) => {
+            println!("ledger: {}", path.display());
+            println!("  pending:   {pending}");
+            println!("  submitted: {submitted}");
+            println!("  completed: {completed}");
+            println!("  failed:    {failed}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("pramen: cannot read ledger {}: {error}", path.display());
             ExitCode::FAILURE
         }
     }

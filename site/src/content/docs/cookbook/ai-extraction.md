@@ -1,87 +1,107 @@
 ---
 title: Budgeted AI extraction
-description: The committed recipe for schema-bound, budget-capped extraction — shipping with the AI workstream.
+description: Schema-bound, budget-capped semantic extraction with the durable inference ledger — runnable today.
 ---
 
-:::caution[Planned]
-The `ai.extract` operator is in active development (workstream P1.5–P1.12).
-The pipeline schema below already validates today; execution lands with
-the AI workstream. This recipe documents the committed contract so you can
-design pipelines against it now.
-:::
+Governed semantic transforms are live: `ai.extract` and `ai.classify` run
+against the durable inference ledger with pre-dispatch budgets and strict
+output validation. Two providers ship today — `mock` (deterministic,
+offline, free — for dry-runs and tests) and `openai-compat` (vLLM, Ollama,
+llama.cpp, or any OpenAI-protocol endpoint). Amazon Bedrock is next (P1.7).
 
 ## The scenario
 
-Support tickets arrive as Parquet with free-text descriptions. You need a
-`category` and a `priority` as real typed columns in PostgreSQL, at a cost
-you can predict, from a run you can safely restart.
+Support tickets arrive as NDJSON with free-text descriptions. You need a
+`category` and a `confidence` as real typed columns in PostgreSQL, at a
+cost you can predict, from a run you can safely restart.
 
 ## The pipeline
+
+This is `examples/local-tickets-ai-classify.yaml` from the repository,
+runnable end to end on a laptop:
 
 ```yaml
 apiVersion: pramen.dev/v1alpha1
 kind: Pipeline
 metadata:
-  name: ticket-enrichment
+  name: local-tickets-ai-classify
 spec:
   models:
-    fast:
-      provider: bedrock
-      model: anthropic.claude-3-haiku-20240307-v1:0
-      region: eu-central-1
+    classifier:
+      provider: mock          # swap for openai-compat + endpoint for real inference
+      model: mock-1
   source:
     type: object_store
-    url: /data/tickets/
-    format: { type: parquet }
+    url: /tmp/pramen-ai-input
+    format: { type: ndjson }
   transforms:
     # 1. Deterministic cleanup first — cheaper than tokens.
-    - id: normalize
+    - id: clean
       type: sql
       query: >
-        SELECT ticket_id, lower(trim(description)) AS description
+        SELECT id, description
         FROM input
-        WHERE description IS NOT NULL
+        WHERE description IS NOT NULL AND length(description) > 3
 
-    # 2. Schema-bound extraction with hard budgets.
+    # 2. Schema-bound classification with hard budgets.
     - id: classify
-      type: ai.extract
-      model: fast
-      execution: auto          # let the runtime pick online vs batch pricing
+      type: ai.classify
+      model: classifier
       inputs: [description]
       instruction: >
-        Classify the support ticket into a business category
-        (billing, technical, account, other) and a priority
-        (low, normal, high, urgent).
+        Classify the support ticket into a category and estimate a
+        confidence score between 0 and 1.
       output:
         fields:
-          - { name: category, type: utf8, nullable: false }
-          - { name: priority, type: utf8, nullable: false }
+          - { name: category, type: utf8 }
+          - { name: confidence, type: float64 }
       validation:
-        onInvalid: review      # invalid model output goes to review, not your table
+        onInvalid: fail
       budget:
         maxInputTokensPerRecord: 2048
-        maxOutputTokensPerRecord: 64
+        maxOutputTokensPerRecord: 256
   sink:
     type: postgres
-    target: support.enriched_tickets
+    target: analytics.tickets_classified
+```
+
+To use a real local model instead of the mock, change the model block:
+
+```yaml
+models:
+  classifier:
+    provider: openai-compat
+    model: llama3.1
+    endpoint: http://localhost:11434/v1   # Ollama
 ```
 
 ## What the runtime guarantees
 
-- **Budgets bite before dispatch.** A record whose input exceeds 2048
-  tokens is rejected up front — not billed and then complained about.
-- **Every completed inference is durable.** Kill the run at any point and
-  restart: finished records are reused from the ledger at zero cost.
-- **Only valid output reaches the table.** Model output that fails the
-  declared schema follows `onInvalid` — here, routed to review instead of
-  polluting `support.enriched_tickets`.
-- **Re-runs are incremental.** Tomorrow's run over a grown dataset pays
-  only for new tickets; changing the instruction re-executes exactly the
-  affected work.
+- **Budgets bite before dispatch.** A record whose input exceeds the
+  configured token ceiling is rejected up front — not billed and then
+  complained about. Output caps are passed to the provider as hard limits.
+- **Every completed inference is durable.** Each validated result is
+  recorded in the SQLite (WAL) ledger *before* it is used. Kill the run at
+  any point and restart: finished records are reused at zero cost.
+- **Only valid output reaches the table.** Model output is validated
+  against the declared fields — types, nullability, no missing or extra
+  fields. Failures follow `onInvalid`: `fail` the run, `drop` the record
+  (counted and logged), or `review` (queue workflow lands in X1.6).
+- **Re-runs are incremental.** The work key covers inputs, instruction,
+  output schema, provider, model, and parameters. Tomorrow's run over a
+  grown dataset pays only for new tickets; changing the instruction
+  re-executes exactly the affected work.
 
-## Try it cheaply first
+## Inspect the ledger
 
-`pramen run --smoke` (planned alongside the operators) runs the same
-pipeline with a record cap, the cheapest configured model, and a hard cost
-ceiling — real enriched rows for a few cents before you commit to a full
-run.
+```console
+$ pramen ai status
+ledger: .pramen/ledger.sqlite
+  pending:   0
+  submitted: 0
+  completed: 6
+  failed:    0
+```
+
+The ledger lives at `.pramen/ledger.sqlite` by default; set
+`PRAMEN_LEDGER_PATH` to share one across working directories.
