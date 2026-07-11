@@ -35,10 +35,11 @@ Everything runs through mise; CI runs the same tasks.
   on library crates.
 - No `unwrap`/`expect` outside tests; errors are typed and documented.
 - Secrets never appear in normalized plans, logs, or snapshots.
-- Tests: nextest; insta for CLI/plan output; proptest for canonicalization
-  and encoders; testcontainers (Postgres) and MinIO for integration; wiremock
-  or recorded fixtures for providers — PRs must pass offline; real-provider
-  tests run in the scheduled weekly workflow under budget alarms.
+- Tests are local-first (ADR 0005), layered L0–L3: trait mocks with billing
+  counters; protocol stubs with recorded fixtures and AWS endpoint override;
+  real local services (testcontainers Postgres, MinIO, OpenAI-compatible
+  local models, fake batch service); weekly budget-alarmed cloud acceptance.
+  PRs must pass with zero cloud access and zero credentials.
 - Conventional commits.
 
 ## Vocabulary discipline

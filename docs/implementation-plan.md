@@ -75,10 +75,16 @@ Actions on all tier-1 targets with the skeleton workspace.
   `docs/vocabulary.md` with the controlled terms and forbidden synonyms.
   Mirror this plan to GitHub issues: one issue per task ID, one milestone per
   group, labels per workstream.
-- **T1.6 Test infrastructure.** testcontainers-rs harness for PostgreSQL;
-  MinIO container fixture for S3-compatible object storage; wiremock harness
-  for provider HTTP APIs; a `record/replay` fixture convention for real
-  Bedrock responses so most tests run offline and free.
+- **T1.6 Test infrastructure (local-first, ADR 0005).** Four substitution
+  layers so every PR gate is offline and free: L0 trait mocks with billing
+  counters; L1 protocol stubs — local HTTP servers with recorded, sanitized
+  provider fixtures, AWS SDK endpoint override, static test credentials;
+  L2 real local services — testcontainers PostgreSQL, MinIO for the S3 API
+  (sources and batch staging), an OpenAI-compatible local model server
+  (Ollama/vLLM/llama.cpp) for end-to-end semantic runs, and a fake batch
+  service (submit/poll/manifest, delays, partial failures, kill-and-resume)
+  for reconciliation testing; L3 weekly budget-alarmed cloud acceptance,
+  the only source of quality/cost and load-impact numbers.
 - **T1.7 Benchmark harness.** Criterion setup, `benches/` conventions, a
   synthetic data generator crate feature (deterministic seeds, configurable
   row shapes), perf workflow with baseline storage and regression gate.
@@ -303,9 +309,11 @@ benchmark baselines locked as regression references.
    task per branch/worktree; groups above are sized for 2–4 parallel tracks.
 4. Development budget is capped under $100/month for cloud + model spend:
    the golden corpus stays at the ≥500-record scale, real-provider suites run
-   weekly (not nightly) with AWS budget alarms, PRs always use recorded
-   fixtures, and the 1M-record acceptance run (P2.1) is a one-off, explicitly
-   approved spend.
+   weekly (not nightly) with AWS budget alarms, and the 1M-record acceptance
+   run (P2.1) is a one-off, explicitly approved spend. PR gates are fully
+   local per ADR 0005: protocol stubs with recorded fixtures, MinIO,
+   testcontainers PostgreSQL, local model servers, and a fake batch service —
+   zero cloud access, zero credentials.
 5. Paper venue: decided after Phase 0 spikes, but every experiment (spike
    reports, golden evaluation, benchmark suite) is designed to VLDB-grade
    rigor from day one — generators, pins, machine specs, and raw results

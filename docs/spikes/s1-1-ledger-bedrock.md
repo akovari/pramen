@@ -1,7 +1,8 @@
 # Spike report S1.1: durable inference ledger + Bedrock Converse online
 
-Status: ledger core validated offline; live Bedrock run pending credentials  
-Date: 2026-07-10  
+Status: ledger core and both provider adapters validated offline; live
+Bedrock run pending credentials  
+Date: 2026-07-10, extended 2026-07-11 (local-first testing, ADR 0005)  
 Code: `spikes/s1-1-ledger-bedrock/` (disposable; this report is the artifact)
 
 ## What was built
@@ -18,9 +19,17 @@ Code: `spikes/s1-1-ledger-bedrock/` (disposable; this report is the artifact)
   items on restart, dispatches only new work, and validates every output
   against the declared JSON Schema (invalid results are recorded with their
   validation failure, not dropped).
-- Providers: a deterministic mock with a billing counter (for reuse proofs)
-  and a Bedrock Converse online adapter (region-pinned, default credential
-  chain, token usage captured from the Converse response).
+- Providers: a deterministic mock with a billing counter (for reuse proofs),
+  a Bedrock Converse online adapter (region-pinned, default credential
+  chain, token usage captured from the Converse response), and an
+  OpenAI-compatible adapter usable against Ollama, vLLM, or llama.cpp for
+  fully local real inference.
+- Protocol stubs (ADR 0005, layer L1): both real adapters run their entire
+  request/parse/validate/record path against single-use localhost HTTP
+  servers with static test credentials — the Bedrock test asserts the
+  Converse route and token accounting; the OpenAI test asserts the
+  chat-completions route, `response_format`, and request-ID capture. No
+  cloud, no credentials, no spend.
 
 ## Exit criteria and results
 
@@ -29,7 +38,9 @@ Code: `spikes/s1-1-ledger-bedrock/` (disposable; this report is the artifact)
 | 100% result reuse on replay of a completed run | **Pass** — replay across a process "restart" (fresh connection) dispatched 0 provider calls, asserted via the mock's billing counter |
 | kill -9 loses zero completed results | **Pass (simulated)** — connection dropped between `submitted` and `completed` states; completed work survived, in-flight work surfaced as ambiguous and recovered |
 | Ledger overhead at 10k / 100k items | **Measured** — see below |
-| Live Bedrock Converse extraction in `eu-central-1` | **Pending** — adapter implemented; needs AWS credentials (`cargo run -- run --provider bedrock --model <id>`) |
+| Bedrock adapter full path offline (ADR 0005 L1) | **Pass** — real adapter against a localhost Converse stub: route, signing, parsing, validation, and recording verified with zero cloud access |
+| OpenAI-compatible adapter offline (ADR 0005 L1/L2) | **Pass** — same runner path against a chat-completions stub; ready for Ollama/vLLM locally (`cargo run -- run --provider openai --endpoint http://localhost:11434/v1 --model <local-model>`) |
+| Live Bedrock Converse extraction in `eu-central-1` | **Pending** — adapter implemented and stub-proven; needs AWS credentials (`cargo run -- run --provider bedrock --model <id>`) |
 
 ## Overhead measurements
 

@@ -12,11 +12,13 @@
 mod ledger;
 mod provider;
 mod runner;
+#[cfg(test)]
+mod stub;
 mod workkey;
 
 use anyhow::Result;
 use ledger::Ledger;
-use provider::{BedrockProvider, MockProvider, Provider};
+use provider::{BedrockProvider, MockProvider, OpenAiCompatProvider, Provider};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -50,6 +52,12 @@ fn main() -> Result<()> {
 
             let provider: Box<dyn Provider> = match provider_name.as_str() {
                 "bedrock" => Box::new(BedrockProvider::new(&arg("--region", "eu-central-1"))?),
+                // Fully local inference: e.g. Ollama at
+                // http://localhost:11434/v1 or vLLM at http://host:8000/v1.
+                "openai" => Box::new(OpenAiCompatProvider::new(
+                    &arg("--endpoint", "http://localhost:11434/v1"),
+                    std::env::var("OPENAI_API_KEY").ok(),
+                )?),
                 _ => Box::new(MockProvider::default()),
             };
 
@@ -186,6 +194,86 @@ mod tests {
         // And the recovery itself is durable.
         let stats = runner::process(&ledger, &provider, &specs).unwrap();
         assert_eq!(stats.reused, 1);
+    }
+
+    /// ADR 0005 L1: the *real* Bedrock adapter — request building, signing,
+    /// response parsing, schema validation, ledger recording — runs offline
+    /// against a localhost protocol stub with static test credentials.
+    #[test]
+    fn bedrock_adapter_full_path_against_local_stub() {
+        let model_output =
+            r#"{\"category\": \"incident\", \"priority\": \"high\", \"rationale\": \"fire\"}"#
+                .replace("\\\"", "\"");
+        let converse_response = serde_json::json!({
+            "metrics": {"latencyMs": 42},
+            "output": {"message": {"role": "assistant", "content": [{"text": model_output}]}},
+            "stopReason": "end_turn",
+            "usage": {"inputTokens": 25, "outputTokens": 18, "totalTokens": 43}
+        });
+        let stub = stub::StubServer::serve_json(converse_response.to_string(), 1);
+
+        let bedrock = provider::BedrockProvider::with_endpoint("eu-central-1", &stub.url).unwrap();
+        let db = temp_db("bedrock-stub");
+        let ledger = Ledger::open(&db).unwrap();
+        let specs = runner::ticket_specs("bedrock", "stub-model-v1", &SAMPLE_TICKETS[..1]);
+
+        let stats = runner::process(&ledger, &bedrock, &specs).unwrap();
+        assert_eq!(stats.dispatched, 1);
+        assert_eq!(stats.invalid, 0);
+        assert_eq!(stats.input_tokens, 25);
+        assert_eq!(stats.output_tokens, 18);
+
+        match ledger.state(&specs[0].work_key()).unwrap() {
+            Some(ledger::WorkState::Completed(result)) => {
+                assert_eq!(result.validation, "valid");
+                assert_eq!(result.output["category"], "incident");
+                assert_eq!(result.provider, "bedrock");
+            }
+            other => panic!("expected completed, got {other:?}"),
+        }
+
+        let requests = stub.finish();
+        assert!(
+            requests[0].contains("/model/stub-model-v1/converse"),
+            "adapter must call the Converse route: {}",
+            requests[0].lines().next().unwrap_or_default()
+        );
+    }
+
+    /// ADR 0005 L1/L2: the OpenAI-compatible adapter (the same code path
+    /// used against Ollama/vLLM locally) runs against a localhost stub.
+    #[test]
+    fn openai_compat_adapter_against_local_stub() {
+        let completion = serde_json::json!({
+            "id": "chatcmpl-local-1",
+            "choices": [{"message": {"role": "assistant",
+                "content": "{\"category\": \"billing\", \"priority\": \"normal\", \"rationale\": \"invoice\"}"}}],
+            "usage": {"prompt_tokens": 40, "completion_tokens": 21}
+        });
+        let stub = stub::StubServer::serve_json(completion.to_string(), 1);
+
+        let provider =
+            provider::OpenAiCompatProvider::new(&format!("{}/v1", stub.url), None).unwrap();
+        let db = temp_db("openai-stub");
+        let ledger = Ledger::open(&db).unwrap();
+        let specs = runner::ticket_specs("openai-compat", "local-model", &SAMPLE_TICKETS[1..2]);
+
+        let stats = runner::process(&ledger, &provider, &specs).unwrap();
+        assert_eq!(stats.dispatched, 1);
+        assert_eq!(stats.invalid, 0);
+
+        match ledger.state(&specs[0].work_key()).unwrap() {
+            Some(ledger::WorkState::Completed(result)) => {
+                assert_eq!(result.output["category"], "billing");
+                assert_eq!(result.request_id, "chatcmpl-local-1");
+                assert_eq!(result.input_tokens, 40);
+            }
+            other => panic!("expected completed, got {other:?}"),
+        }
+
+        let requests = stub.finish();
+        assert!(requests[0].contains("/v1/chat/completions"));
+        assert!(requests[0].contains("response_format"));
     }
 
     #[test]
