@@ -106,8 +106,24 @@ systems and states honestly where each remains the better choice.
 
 ## Current status
 
-Pramen is in the design phase. No implementation or stable public API exists
-yet.
+Early implementation; no stable public API yet. What runs today:
+
+- `pramen validate` and `pramen explain` accept the versioned v1alpha1
+  pipeline document, report every validation issue with its path, and ship a
+  [generated JSON Schema](docs/schema/pipeline.v1alpha1.schema.json);
+- `pramen run` executes deterministic pipelines end to end: local Parquet →
+  per-batch DataFusion SQL → transactional binary `COPY` into PostgreSQL,
+  with bounded channels, backpressure, Ctrl-C cancellation, and a run
+  summary (see [examples/local-parquet-to-postgres.yaml](examples/local-parquet-to-postgres.yaml));
+- the riskiest boundaries are spike-validated with measured results in
+  [docs/spikes/](docs/spikes/): durable SQLite inference ledger with 100%
+  result reuse and crash recovery (S1.1), bounded-memory Parquet + SQL at
+  ~3M rows/s (S1.2), and native binary `COPY` at 3.1x the `psql \copy`
+  baseline (S1.3).
+
+Semantic (`ai.*`) transforms, NDJSON, remote object stores, checkpointing,
+and provider adapters are in progress on the
+[Phase 1 workstreams](docs/implementation-plan.md).
 
 Read the [product and architecture direction](docs/architecture.md) for the
 competitive position, proposed runtime, WASM ABI, connector strategy, delivery
@@ -152,25 +168,18 @@ conventions live in [AGENTS.md](AGENTS.md).
 
 ## Immediate next step
 
-Build a deliberately disposable technical spike, ordered by risk to the
-thesis:
+The remaining risk spikes and Phase 1 workstreams, in order:
 
-1. implements the durable work ledger on SQLite and performs schema-bound
-   support-ticket extraction through Amazon Bedrock Converse, online and
-   batch, with the same pinned model and schema;
-2. proves durable result reuse across a crash, reconciles an in-flight batch
-   job after restart, and records model provenance, validation, tokens, and
-   cost;
-3. compares fast/cheap and stronger models in `eu-central-1`, then runs the
-   same schema through a self-hosted vLLM endpoint;
-4. reads partitioned Parquet through `object_store` with bounded memory and a
-   DataFusion SQL transform over the batch stream;
-5. bulk-loads the enriched output into PostgreSQL through native Rust
-   `COPY FROM STDIN BINARY`;
-6. round-trips Arrow batches through a WIT component using Arrow IPC with
-   enforced limits — gating the later extensibility milestone, not v1.
+1. live Bedrock Converse leg of the ledger spike (needs AWS credentials) and
+   the Bedrock batch + crash-reconciliation spike (S2.1);
+2. the golden evaluation corpus and model quality-cost frontier (S2.2);
+3. `ai.extract` / `ai.classify` operators on the production ledger, budgets,
+   and validation layer (P1.6, P1.10–P1.12);
+4. NDJSON and remote object-store sources, checkpointing, and at-least-once
+   delivery tests (P1.1–P1.3, P1.14);
+5. the WASM WIT component round-trip spike, gating the extensibility
+   milestone, not v1 (S1.4).
 
-The spike should validate the riskiest boundaries before the production
-workspace and plugin API are designed. The subsequent AWS acceptance test
-should compare client-streamed `COPY FROM STDIN` with Aurora's server-side S3
-import where the source format and transformation permit it.
+The subsequent AWS acceptance test should compare client-streamed
+`COPY FROM STDIN` with Aurora's server-side S3 import where the source
+format and transformation permit it.
