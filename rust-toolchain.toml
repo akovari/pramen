@@ -1,4 +1,4 @@
-# Pinned stable toolchain; MSRV (1.86, set by datafusion) is declared in
+# Pinned stable toolchain; MSRV (1.88, required by let-chains in the dependency tree) is declared in
 # Cargo.toml and checked
 # by a dedicated CI job with RUSTUP_TOOLCHAIN.
 [toolchain]
