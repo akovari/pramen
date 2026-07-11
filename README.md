@@ -5,6 +5,9 @@ and transformation runtime.
 
 The name means **spring** or **source of water** in Czech.
 
+**Documentation: [akovari.github.io/pramen](https://akovari.github.io/pramen/)** —
+quickstart, concepts, cookbook, reference, and measured results.
+
 ## Direction
 
 Pramen is intended to:
