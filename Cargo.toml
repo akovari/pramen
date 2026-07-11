@@ -20,14 +20,19 @@ license = "Apache-2.0"
 repository = "https://github.com/akovari/pramen"
 
 [workspace.dependencies]
-arrow = { version = "57", default-features = false }
+# Pinned to the arrow major used by our datafusion version.
+arrow = { version = "56", default-features = false }
 async-trait = "0.1"
+bytes = "1"
 clap = { version = "4", features = ["derive"] }
+datafusion = "50"
+futures = "0.3"
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"
 thiserror = "2"
+tokio-postgres = "0.7"
 tokio = { version = "1", default-features = false }
 tokio-util = "0.7"
 tracing = "0.1"

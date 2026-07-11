@@ -1,7 +1,10 @@
 //! The `pramen` CLI.
 //!
-//! v1 surface: `validate`, `explain`, `run`, `ai`. The first two are live;
-//! `run` and `ai` land with the Phase 1 engine and AI workstreams.
+//! v1 surface: `validate`, `explain`, `run`, `ai`. The first three are
+//! live for deterministic pipelines; `ai` lands with the Phase 1 AI
+//! workstream.
+
+mod run;
 
 use clap::{Parser, Subcommand};
 use pramen_core::observe::LogFormat;
@@ -61,7 +64,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Execute a pipeline (not yet implemented).
+    /// Execute a pipeline.
     Run {
         /// Path to the pipeline YAML document.
         file: PathBuf,
@@ -104,10 +107,16 @@ fn main() -> ExitCode {
             }
             Err(exit) => exit,
         },
-        Command::Run { .. } => {
-            eprintln!("pramen: `run` is not implemented yet (Phase 1 engine workstream)");
-            ExitCode::FAILURE
-        }
+        Command::Run { file } => match load(&file) {
+            Ok(spec) => match run::execute(&spec) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("pramen: run failed: {message}");
+                    ExitCode::FAILURE
+                }
+            },
+            Err(exit) => exit,
+        },
         Command::Ai => {
             eprintln!("pramen: `ai` is not implemented yet (Phase 1 AI workstream)");
             ExitCode::FAILURE

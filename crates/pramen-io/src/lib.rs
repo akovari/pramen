@@ -1,4 +1,19 @@
-//! Pramen I/O: Parquet and NDJSON formats, object-store sources, and the
-//! native PostgreSQL `COPY` sink.
+//! File formats, object-store sources, SQL transforms, and database sinks.
 //!
-//! Skeleton crate; populated by Phase 1 workstream IO tasks (P1.1–P1.4).
+//! This crate provides the concrete [`pramen_core::runtime`] stage
+//! implementations for the lean v1 profile:
+//!
+//! - [`ParquetSource`]: streams Arrow batches out of Parquet files via
+//!   DataFusion's bounded, spillable execution;
+//! - [`SqlTransform`]: per-batch DataFusion SQL where the incoming batch is
+//!   visible as the table `input`;
+//! - [`PostgresCopySink`]: native binary `COPY` into PostgreSQL inside a
+//!   single transaction, committed only when the run succeeds.
+
+mod postgres;
+mod source;
+mod sql;
+
+pub use postgres::PostgresCopySink;
+pub use source::ParquetSource;
+pub use sql::SqlTransform;

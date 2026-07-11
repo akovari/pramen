@@ -1,0 +1,26 @@
+# A fully local, runnable pipeline: Parquet files on disk, one SQL
+# transform, native COPY into PostgreSQL. Used by the end-to-end smoke.
+#
+#   export PRAMEN_POSTGRES_DSN=postgres://postgres:...@localhost:5432/postgres
+#   pramen run examples/local-parquet-to-postgres.yaml
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: local-parquet-to-postgres
+spec:
+  source:
+    type: object_store
+    url: /tmp/pramen-e2e-input
+    format:
+      type: parquet
+  transforms:
+    - id: enrich
+      type: sql
+      query: >
+        SELECT id, category, amount, amount * 1.21 AS amount_gross
+        FROM input
+        WHERE category <> 'epsilon'
+  sink:
+    type: postgres
+    target: analytics.events
+    mode: append
