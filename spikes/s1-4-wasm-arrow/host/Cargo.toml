@@ -1,0 +1,16 @@
+# S1.4 spike host: wasmtime component host measuring the Arrow IPC
+# boundary and proving limit behavior. Disposable spike code.
+[package]
+name = "s1-4-host"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+arrow = { version = "56", default-features = false, features = ["ipc"] }
+wasmtime = "38"
+wasmtime-wasi = "38"
+
+[profile.release]
+debug = true

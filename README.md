@@ -229,9 +229,12 @@ unblocks):
    then the S2.1 spike numbers on real Bedrock;
 2. the model quality-cost frontier table (S2.2 remainder — the corpus
    and `ai evaluate` harness are live; runs against real Bedrock models
-   and a local vLLM remain);
-3. the WASM WIT component round-trip spike, gating the extensibility
-   milestone, not v1 (S1.4).
+   and a local vLLM remain).
+
+All four Phase 0 risk spikes are complete — most recently S1.4, which
+validated the Phase 2 WASM ABI: Arrow IPC through a WIT component at
+~43 ns/row with deterministic memory/fuel/deadline limits
+([docs/spikes/s1-4-wasm-arrow.md](docs/spikes/s1-4-wasm-arrow.md)).
 
 The subsequent AWS acceptance test should compare client-streamed
 `COPY FROM STDIN` with Aurora's server-side S3 import where the source

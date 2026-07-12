@@ -94,6 +94,11 @@ This page is the honest summary.
   productionized in `pramen-ai`.
 - **Bounded-memory scanning** and **binary COPY throughput** — see
   [measured results](/pramen/project/benchmarks/).
+- **The WASM transform ABI** (Phase 2's riskiest boundary): Arrow IPC
+  through a WIT component at ~43 ns/row on default-size batches — ~2%
+  of the measured load path — with memory, fuel, and deadline limits
+  all trapping deterministically and exactly reproducible fuel
+  accounting. All four Phase 0 risk spikes are now complete.
 
 ## In development (Phase 1)
 

@@ -1,0 +1,19 @@
+# S1.4 spike guest: an Arrow-IPC-in, Arrow-IPC-out transform component.
+# Disposable spike code (see docs/spikes/ for the permanent report).
+[package]
+name = "s1-4-guest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+arrow = { version = "56", default-features = false, features = ["ipc"] }
+wit-bindgen = "0.46"
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true
