@@ -49,6 +49,10 @@ run = "cargo bench --workspace"
 description = "End-to-end benchmark suite (needs PRAMEN_POSTGRES_DSN)"
 run = "./scripts/bench.sh"
 
+[tasks.perf-gate]
+description = "Perf regression gate: designated benches vs the merge-base"
+run = "./scripts/perf-gate.sh"
+
 [tasks.ci]
 description = "The full local gate; identical checks run in GitHub Actions"
 depends = ["lint", "deny", "test", "docs"]

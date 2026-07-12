@@ -1,0 +1,35 @@
+name: Perf
+
+# The regression gate from the quality-gates table (T1.7): designated
+# Criterion benches, measured at the merge-base and at HEAD in the same
+# job, fail the workflow when even the lower confidence bound of the
+# change exceeds +5%. Scoped to changes that can affect performance.
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/perf-gate.sh"
+      - ".github/workflows/perf.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  perf:
+    name: Regression gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The gate benches the merge-base, so it needs history.
+          fetch-depth: 0
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/perf-gate.sh origin/${{ github.base_ref || 'main' }}

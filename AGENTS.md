@@ -29,6 +29,10 @@ Everything runs through mise; CI runs the same tasks.
 - `mise run bench` — criterion benches against stored baselines
 - `mise run bench-e2e` — end-to-end benchmark suite (`scripts/bench.sh`;
   needs `PRAMEN_POSTGRES_DSN`; publishes reports to `docs/benchmarks/`)
+- `mise run perf-gate` — the CI perf-regression gate locally
+  (`scripts/perf-gate.sh [base-ref]`: benches the merge-base in a
+  worktree, re-benches HEAD, fails on >5% regression at the lower 95%
+  CI bound of designated benches)
 
 ## Code standards
 
