@@ -70,6 +70,13 @@ enum Command {
     Run {
         /// Path to the pipeline YAML document.
         file: PathBuf,
+        /// Smoke mode: a bounded rehearsal — cap source rows, clamp every
+        /// semantic transform's run-token ceiling, skip checkpointing.
+        #[arg(long)]
+        smoke: bool,
+        /// Row cap for --smoke.
+        #[arg(long, default_value_t = 100, requires = "smoke")]
+        smoke_rows: usize,
     },
     /// AI governance utilities.
     Ai {
@@ -152,14 +159,21 @@ fn main() -> ExitCode {
             }
             Err(exit) => exit,
         },
-        Command::Run { file } => match load(&file) {
-            Ok(spec) => match run::execute(&spec) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(message) => {
-                    eprintln!("pramen: run failed: {message}");
-                    ExitCode::FAILURE
+        Command::Run {
+            file,
+            smoke,
+            smoke_rows,
+        } => match load(&file) {
+            Ok(spec) => {
+                let smoke = smoke.then_some(run::SmokeOptions { rows: smoke_rows });
+                match run::execute(&spec, smoke) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(message) => {
+                        eprintln!("pramen: run failed: {message}");
+                        ExitCode::FAILURE
+                    }
                 }
-            },
+            }
             Err(exit) => exit,
         },
         Command::Ai {

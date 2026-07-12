@@ -47,6 +47,12 @@ This page is the honest summary.
   through the same provider adapters as pipelines; reports schema-valid
   rate, per-field accuracy, macro-F1, a weighted score, tokens, cost, and
   latency percentiles into a timestamped, diffable results directory.
+- **Smoke runs** (`run --smoke`): source row cap, clamped semantic token
+  ceiling, checkpointing bypassed — a cheap rehearsal that still proves
+  sink connectivity under the real transactional contract.
+- **Measured quickstart**: the documented binary-to-enriched-rows path is
+  executed by `scripts/quickstart.sh` in CI on every change and timed
+  against the ten-minute bar, so the docs cannot drift from reality.
 - **Runtime guarantees**: commit-safety on failure (no partial loads),
   first-failure error attribution, prompt cooperative shutdown — all
   covered by behavioral tests.
@@ -68,7 +74,6 @@ This page is the honest summary.
 - The model quality-cost frontier table (S2.2 remainder): the corpus and
   `ai evaluate` harness are live; the pinned model choice per tier needs
   runs against real Bedrock models and a local vLLM.
-- `run --smoke` and the measured ten-minute quickstart (P1.16, P1.18).
 - Fault-injection and benchmark suites (P1.19–P1.20).
 
 ## After v1

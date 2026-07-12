@@ -253,7 +253,7 @@ pub enum InvalidPolicy {
 }
 
 /// Hard token budgets for a semantic transform.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AiBudget {
     /// Maximum input tokens per record.

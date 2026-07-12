@@ -3191,6 +3191,8 @@ dependencies = [
 name = "pramen"
 version = "0.0.1"
 dependencies = [
+ "arrow",
+ "async-trait",
  "clap",
  "pramen-ai",
  "pramen-core",

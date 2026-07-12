@@ -14,6 +14,9 @@ publish.workspace = true
 dist = true
 
 [dependencies]
+# For the row-cap source wrapper behind `run --smoke`.
+arrow = { workspace = true }
+async-trait = { workspace = true }
 clap = { workspace = true }
 pramen-core = { path = "../pramen-core" }
 pramen-ai = { path = "../pramen-ai" }

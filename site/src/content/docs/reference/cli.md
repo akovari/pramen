@@ -68,7 +68,20 @@ clear message, before touching any data.
 - On success, a one-line summary reports rows in/out, batches, bytes, and
   throughput.
 
-Planned flags: `--smoke` (record cap + cheapest model + hard cost ceiling).
+### `--smoke [--smoke-rows N]`
+
+A bounded rehearsal of the real pipeline before committing to the whole
+dataset: the source is capped at `--smoke-rows` rows (default 100), every
+semantic transform's `maxRunTokens` ceiling is clamped to 50,000 tokens
+(kept if the pipeline declares a lower one), and the checkpoint store is
+neither consulted nor updated — a partial run must never mark work units
+complete. Rows still land in the real sink under the same transactional
+contract, so the smoke run also proves connectivity and schema fit.
+
+```console
+$ pramen run --smoke examples/local-tickets-ai-classify.yaml
+smoke run complete: 100 rows in / 100 rows out in 137.05ms
+```
 
 ## `pramen ai status [--ledger <path>]`
 

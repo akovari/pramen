@@ -145,6 +145,10 @@ Early implementation; no stable public API yet. What runs today:
   versioned 520-item golden support-ticket corpus
   ([corpora/](corpora/)), through the same provider adapters pipelines
   use, into timestamped diffable reports;
+- `pramen run --smoke` rehearses a pipeline cheaply (row cap, clamped
+  token ceiling, checkpointing bypassed) before a full run, and the
+  documented quickstart is executed and timed in CI on every change
+  ([scripts/quickstart.sh](scripts/quickstart.sh));
 - the riskiest boundaries are spike-validated with measured results in
   [docs/spikes/](docs/spikes/): durable SQLite inference ledger with 100%
   result reuse and crash recovery (S1.1), bounded-memory Parquet + SQL at
@@ -206,9 +210,8 @@ unblocks):
 2. the model quality-cost frontier table (S2.2 remainder — the corpus
    and `ai evaluate` harness are live; runs against real Bedrock models
    and a local vLLM remain);
-3. `run --smoke` and the measured ten-minute quickstart (P1.16, P1.18);
-4. fault-injection and benchmark suites (P1.19–P1.20);
-5. the WASM WIT component round-trip spike, gating the extensibility
+3. fault-injection and benchmark suites (P1.19–P1.20);
+4. the WASM WIT component round-trip spike, gating the extensibility
    milestone, not v1 (S1.4).
 
 The subsequent AWS acceptance test should compare client-streamed

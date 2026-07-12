@@ -1,10 +1,19 @@
 ---
 title: Quickstart
-description: From nothing to transformed rows in PostgreSQL in a few minutes.
+description: One binary, one YAML file, governed AI-enriched rows in PostgreSQL.
 ---
 
-This walkthrough runs a real pipeline on your machine: Parquet files on
-disk, one SQL transform, and a transactional bulk load into PostgreSQL.
+This walkthrough runs a real governed-AI pipeline on your machine: NDJSON
+support tickets on disk, one SQL cleanup step, one governed `ai.classify`
+step, and a transactional bulk load into PostgreSQL. It is offline and
+free — the deterministic `mock` provider stands in for a model — and the
+same pipeline switches to a real model by changing one `provider` line.
+
+Every step below is executed by
+[`scripts/quickstart.sh`](https://github.com/akovari/pramen/blob/main/scripts/quickstart.sh)
+in CI on every change and timed against a ten-minute bar, so this page
+cannot silently drift from what works. (Locally the pipeline itself
+finishes in seconds.)
 
 ## 1. Prerequisites
 
@@ -16,91 +25,154 @@ docker run -d --name pramen-quickstart \
   -e POSTGRES_PASSWORD=quickstart -p 5432:5432 postgres:17-alpine
 ```
 
-## 2. Create the target table
+## 2. Generate input
+
+A thousand synthetic support tickets, one JSON object per line:
+
+```bash
+mkdir -p /tmp/pramen-ai-input
+awk 'BEGIN {
+  for (i = 1; i <= 1000; i++)
+    printf("{\"id\": %d, \"description\": \"ticket %d: subsystem %d reports a fault\"}\n", i, i, i % 7)
+}' > /tmp/pramen-ai-input/tickets.ndjson
+```
+
+## 3. Create the target table
 
 ```bash
 psql postgres://postgres:quickstart@localhost:5432/postgres <<'SQL'
 CREATE SCHEMA IF NOT EXISTS analytics;
-CREATE TABLE analytics.events (
-    id           bigint NOT NULL,
-    category     text NOT NULL,
-    amount       double precision NOT NULL,
-    amount_gross double precision NOT NULL
+CREATE TABLE analytics.tickets_classified (
+    id          bigint NOT NULL,
+    description text NOT NULL,
+    category    text NOT NULL,
+    confidence  double precision NOT NULL
 );
 SQL
 ```
 
-## 3. Write the pipeline
+## 4. The pipeline
 
-Save this as `pipeline.yaml` (it is also in the repository as
-`examples/local-parquet-to-postgres.yaml`):
+This is the repository's
+[`examples/local-tickets-ai-classify.yaml`](https://github.com/akovari/pramen/blob/main/examples/local-tickets-ai-classify.yaml):
 
 ```yaml
 apiVersion: pramen.dev/v1alpha1
 kind: Pipeline
 metadata:
-  name: local-parquet-to-postgres
+  name: local-tickets-ai-classify
 spec:
+  models:
+    classifier:
+      provider: mock        # swap for openai-compat or bedrock later
+      model: mock-1
   source:
     type: object_store
-    url: /tmp/pramen-input        # a directory of .parquet files
+    url: /tmp/pramen-ai-input
     format:
-      type: parquet
+      type: ndjson
   transforms:
-    - id: enrich
+    - id: clean
       type: sql
       query: >
-        SELECT id, category, amount, amount * 1.21 AS amount_gross
+        SELECT id, description
         FROM input
-        WHERE category <> 'epsilon'
+        WHERE description IS NOT NULL AND length(description) > 3
+    - id: classify
+      type: ai.classify
+      model: classifier
+      inputs: [description]
+      instruction: >
+        Classify the support ticket into a category and estimate a
+        confidence score between 0 and 1.
+      output:
+        fields:
+          - name: category
+            type: utf8
+          - name: confidence
+            type: float64
+      validation:
+        onInvalid: fail
+      budget:
+        maxInputTokensPerRecord: 2048
+        maxOutputTokensPerRecord: 256
   sink:
     type: postgres
-    target: analytics.events
+    target: analytics.tickets_classified
     mode: append
 ```
 
 Inside a SQL transform, the incoming stream is always the table `input`.
 
-## 4. Validate and inspect
+## 5. Validate, smoke, run
 
 ```bash
-pramen validate pipeline.yaml
-pramen explain pipeline.yaml
+pramen validate examples/local-tickets-ai-classify.yaml
 ```
 
 `validate` reports **every** problem at once, each with a path into the
-document — no fix-one-rerun loops:
-
-```text
-pramen: pipeline.yaml has 2 validation issue(s):
-  - spec.transforms[0].id: must not be empty
-  - spec.sink.target: `events` must be a qualified `schema.table` name
-```
-
-## 5. Run
-
-The connection string is a secret, so it never appears in the pipeline
-document — it comes from the environment:
+document — no fix-one-rerun loops. Before committing to the whole
+dataset, rehearse cheaply — `--smoke` caps the source at 100 rows and
+clamps every semantic transform's token ceiling:
 
 ```bash
 export PRAMEN_POSTGRES_DSN=postgres://postgres:quickstart@localhost:5432/postgres
-pramen run pipeline.yaml
+pramen run --smoke examples/local-tickets-ai-classify.yaml
 ```
 
 ```text
-run complete: 200000 rows in / 160000 rows out in 1.62s
-  (98942 rows/s out, 28 batches, 6.1 MiB written)
+smoke run complete: 100 rows in / 100 rows out in 137.05ms
+```
+
+Then the real thing:
+
+```bash
+pramen run examples/local-tickets-ai-classify.yaml
+```
+
+```text
+run complete: 1000 rows in / 1000 rows out in 236.31ms
+  (4232 rows/s out, 1 batches, 0.1 MiB written)
 ```
 
 The load happens inside a single transaction using PostgreSQL's binary
 `COPY` protocol: if anything fails mid-run — including Ctrl-C — the table
-is left exactly as it was.
+is left exactly as it was. Every classification was recorded in the
+durable inference ledger first; run it again and nothing is
+re-dispatched:
+
+```bash
+pramen ai status
+```
+
+```text
+ledger: .pramen/ledger.sqlite
+  pending:   0
+  submitted: 0
+  completed: 1000
+  failed:    0
+```
+
+## 6. Make it real
+
+Point the model at an actual backend — everything else stays identical,
+including budgets, validation, and the ledger:
+
+```yaml
+  models:
+    classifier:
+      provider: openai-compat          # e.g. a local Ollama
+      endpoint: http://localhost:11434/v1
+      model: llama3.1:8b
+```
 
 ## Where next
 
 - [The pipeline document](/pramen/concepts/pipeline-spec/) — every field, and
   the thinking behind the shape.
+- [Governed AI enrichment](/pramen/concepts/governed-ai/) — budgets,
+  validation, the inference ledger, and provider-batch execution.
+- [Cookbook: AI extraction](/pramen/cookbook/ai-extraction/) — richer
+  semantic pipelines, including `execution: batch`.
 - [Cookbook: filter and derive with SQL](/pramen/cookbook/filter-and-derive/)
-  — practical transform patterns.
-- [Governed AI enrichment](/pramen/concepts/governed-ai/) — where
-  `ai.extract` fits and how the inference ledger keeps costs sane.
+  — practical deterministic transform patterns.

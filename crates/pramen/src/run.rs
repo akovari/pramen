@@ -23,18 +23,47 @@ const LEDGER_PATH_ENV: &str = "PRAMEN_LEDGER_PATH";
 /// Default inference ledger location, relative to the working directory.
 const DEFAULT_LEDGER_PATH: &str = ".pramen/ledger.sqlite";
 
+/// Row cap for `run --smoke` unless overridden.
+const SMOKE_DEFAULT_ROWS: usize = 100;
+
+/// Hard per-transform token ceiling clamped onto every semantic step in a
+/// smoke run — a cost seatbelt even when the pipeline declares none.
+const SMOKE_MAX_RUN_TOKENS: u64 = 50_000;
+
+/// Settings for a `run --smoke` invocation (P1.16): a cheap, fast,
+/// bounded rehearsal of the real pipeline.
+#[derive(Debug, Clone, Copy)]
+pub struct SmokeOptions {
+    /// Maximum source rows processed.
+    pub rows: usize,
+}
+
+impl Default for SmokeOptions {
+    fn default() -> Self {
+        Self {
+            rows: SMOKE_DEFAULT_ROWS,
+        }
+    }
+}
+
 /// Execute `spec` to completion, honoring Ctrl-C.
+///
+/// With `smoke` set, the run is a bounded rehearsal: the source is capped
+/// at `smoke.rows` rows, every semantic transform gets a hard run-token
+/// ceiling, and the checkpoint store is neither consulted nor updated
+/// (a partial run must never mark work units complete). Rows still land
+/// in the real sink under the same transactional contract.
 ///
 /// # Errors
 ///
 /// Returns a human-readable message when planning or execution fails.
-pub fn execute(spec: &PipelineSpec) -> Result<(), String> {
+pub fn execute(spec: &PipelineSpec, smoke: Option<SmokeOptions>) -> Result<(), String> {
     let tokio_runtime = tokio::runtime::Runtime::new()
         .map_err(|error| format!("failed to start async runtime: {error}"))?;
-    tokio_runtime.block_on(execute_async(spec))
+    tokio_runtime.block_on(execute_async(spec, smoke))
 }
 
-async fn execute_async(spec: &PipelineSpec) -> Result<(), String> {
+async fn execute_async(spec: &PipelineSpec, smoke: Option<SmokeOptions>) -> Result<(), String> {
     let started = Instant::now();
     let runtime_spec = &spec.spec.runtime;
     let run_id = format!(
@@ -48,10 +77,15 @@ async fn execute_async(spec: &PipelineSpec) -> Result<(), String> {
 
     // With checkpointing configured, enumerate the source into work units,
     // skip completed ones, and durably claim the rest before reading
-    // (architecture §11 steps 1–2).
+    // (architecture §11 steps 1–2). Smoke runs bypass the store entirely:
+    // a capped rehearsal must never mark work units complete.
+    if smoke.is_some() && runtime_spec.checkpoint.is_some() {
+        tracing::info!("smoke run: checkpoint store is neither consulted nor updated");
+    }
     let mut checkpoint: Option<(FileCheckpointStore, Vec<String>)> = None;
     let planned_paths = match &runtime_spec.checkpoint {
         None => None,
+        Some(_) if smoke.is_some() => None,
         Some(config) => {
             let mut store = open_checkpoint_store(&config.url)?;
             let units = enumerate_units(spec)?;
@@ -90,8 +124,19 @@ async fn execute_async(spec: &PipelineSpec) -> Result<(), String> {
         }
     };
 
-    let source = plan_source(spec, planned_paths).await?;
-    let transforms = plan_transforms(spec).await?;
+    let mut source = plan_source(spec, planned_paths).await?;
+    if let Some(options) = smoke {
+        tracing::info!(
+            rows = options.rows,
+            max_run_tokens = SMOKE_MAX_RUN_TOKENS,
+            "smoke run: source row cap and semantic token ceiling applied"
+        );
+        source = Box::new(RowCapSource {
+            inner: source,
+            remaining: options.rows,
+        });
+    }
+    let transforms = plan_transforms(spec, smoke.is_some()).await?;
     let sink = plan_sink(spec).await?;
 
     let capacity = usize::try_from(
@@ -140,8 +185,9 @@ async fn execute_async(spec: &PipelineSpec) -> Result<(), String> {
 
     let elapsed = started.elapsed();
     let m = summary.metrics;
+    let label = if smoke.is_some() { "smoke run" } else { "run" };
     println!(
-        "run complete: {} rows in / {} rows out in {elapsed:.2?} ({:.0} rows/s out, {} batches, {:.1} MiB written)",
+        "{label} complete: {} rows in / {} rows out in {elapsed:.2?} ({:.0} rows/s out, {} batches, {:.1} MiB written)",
         m.rows_in,
         m.rows_out,
         m.rows_out as f64 / elapsed.as_secs_f64().max(f64::EPSILON),
@@ -149,6 +195,34 @@ async fn execute_async(spec: &PipelineSpec) -> Result<(), String> {
         m.bytes_out as f64 / 1_048_576.0,
     );
     Ok(())
+}
+
+/// Caps a source at a fixed number of rows for smoke runs, slicing the
+/// final batch so the cap is exact.
+struct RowCapSource {
+    inner: Box<dyn Source>,
+    remaining: usize,
+}
+
+#[async_trait::async_trait]
+impl Source for RowCapSource {
+    async fn next_batch(
+        &mut self,
+    ) -> Result<Option<arrow::record_batch::RecordBatch>, pramen_core::runtime::StageError> {
+        if self.remaining == 0 {
+            return Ok(None);
+        }
+        let Some(batch) = self.inner.next_batch().await? else {
+            return Ok(None);
+        };
+        let take = batch.num_rows().min(self.remaining);
+        self.remaining -= take;
+        Ok(Some(if take == batch.num_rows() {
+            batch
+        } else {
+            batch.slice(0, take)
+        }))
+    }
 }
 
 /// Open the file checkpoint store configured at `url` (a local directory,
@@ -208,7 +282,10 @@ async fn plan_source(
 /// A planned, named transform stage.
 type PlannedTransform = (String, Box<dyn Transform>);
 
-async fn plan_transforms(spec: &PipelineSpec) -> Result<Vec<PlannedTransform>, String> {
+async fn plan_transforms(
+    spec: &PipelineSpec,
+    smoke: bool,
+) -> Result<Vec<PlannedTransform>, String> {
     let mut planned = Vec::with_capacity(spec.spec.transforms.len());
     for transform in &spec.spec.transforms {
         planned.push(match transform {
@@ -216,19 +293,21 @@ async fn plan_transforms(spec: &PipelineSpec) -> Result<Vec<PlannedTransform>, S
                 sql.id.clone(),
                 Box::new(pramen_io::SqlTransform::new(&sql.query)) as Box<dyn Transform>,
             ),
-            TransformSpec::AiExtract(ai) => plan_semantic("ai.extract", ai, spec).await?,
-            TransformSpec::AiClassify(ai) => plan_semantic("ai.classify", ai, spec).await?,
+            TransformSpec::AiExtract(ai) => plan_semantic("ai.extract", ai, spec, smoke).await?,
+            TransformSpec::AiClassify(ai) => plan_semantic("ai.classify", ai, spec, smoke).await?,
         });
     }
     Ok(planned)
 }
 
 /// Build one governed semantic transform: resolve the model reference to a
-/// provider adapter and open a handle to the shared inference ledger.
+/// provider adapter and open a handle to the shared inference ledger. A
+/// smoke run clamps the transform's run-token ceiling to the smoke cap.
 async fn plan_semantic(
     operation: &str,
     ai: &AiTransform,
     spec: &PipelineSpec,
+    smoke: bool,
 ) -> Result<PlannedTransform, String> {
     let model = spec.spec.models.get(&ai.model).ok_or_else(|| {
         format!(
@@ -239,9 +318,21 @@ async fn plan_semantic(
     let provider = plan_provider(&ai.id, model).await?;
     let ledger =
         Ledger::open(&ledger_path()).map_err(|error| format!("transform `{}`: {error}", ai.id))?;
-    let transform = SemanticTransform::new(operation, ai.clone(), provider, &model.model, ledger)
-        .map_err(|error| format!("transform `{}`: {error}", ai.id))?;
-    Ok((ai.id.clone(), Box::new(transform) as Box<dyn Transform>))
+    let mut ai = ai.clone();
+    if smoke {
+        let budget = ai.budget.get_or_insert_with(Default::default);
+        budget.max_run_tokens = Some(
+            budget
+                .max_run_tokens
+                .map_or(SMOKE_MAX_RUN_TOKENS, |declared| {
+                    declared.min(SMOKE_MAX_RUN_TOKENS)
+                }),
+        );
+    }
+    let id = ai.id.clone();
+    let transform = SemanticTransform::new(operation, ai, provider, &model.model, ledger)
+        .map_err(|error| format!("transform `{id}`: {error}"))?;
+    Ok((id, Box::new(transform) as Box<dyn Transform>))
 }
 
 /// Resolve a model declaration to a provider adapter (shared with

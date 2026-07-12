@@ -95,3 +95,28 @@ jobs:
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --workspace --no-deps
+
+  quickstart:
+    # The documented quickstart, executed for real (P1.18): binary + one
+    # YAML file -> governed AI-enriched rows in PostgreSQL, timed against
+    # the ten-minute bar. If the docs' steps drift from reality, this fails.
+    name: Quickstart
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: quickstart
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PRAMEN_POSTGRES_DSN: postgres://postgres:quickstart@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p pramen
+      - run: PRAMEN_BIN=target/debug/pramen ./scripts/quickstart.sh
