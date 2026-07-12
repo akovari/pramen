@@ -77,10 +77,11 @@ This page is the honest summary.
   and re-enter the ledger as zero-token `human-review` results;
   rejections are permanent, auditable drops.
 - **Benchmark suite** (`scripts/bench.sh` + Criterion): deterministic
-  generated inputs, end-to-end throughput / CPU-s per GiB / peak RSS
-  against DataFusion-direct and DuckDB baselines, plus encoder and
-  ledger micro-benches — results published with methodology in
-  [measured results](/pramen/project/benchmarks/).
+  generated inputs, end-to-end throughput / CPU / peak RSS against
+  DataFusion-direct, DuckDB-native, and a like-for-like
+  DuckDB→PostgreSQL leg (same query, same server, via its `postgres`
+  extension), plus encoder and ledger micro-benches — results published
+  with methodology in [measured results](/pramen/project/benchmarks/).
 
 ## Spike-validated (design proven)
 

@@ -16,22 +16,26 @@ Silicon laptop; treat them as relative evidence, not absolute promises.
 
 The suite (`scripts/bench.sh`) generates its input deterministically —
 5M rows, six-type column mix, 0.302 GiB of Snappy Parquet — and runs the
-same projection + derivation + filter (4M rows out) through three paths,
-measuring wall time, CPU seconds, and peak RSS with `/usr/bin/time`:
+same projection + derivation + filter (4M rows out) through four paths,
+measuring wall time, CPU seconds, and peak RSS with `/usr/bin/time`
+(ranges over three runs in one session):
 
-| Path | Wall time | Rows out/s | CPU-s / GiB in | Peak RSS |
+| Path | Wall time | Rows out/s | CPU s | Peak RSS |
 | --- | --- | --- | --- | --- |
-| **Pramen end-to-end → PostgreSQL** | 6.8–9.2 s | 434k–590k | ~10 | 376–531 MiB |
-| DataFusion direct (same SQL, no sink) | 1.3 s | 2.99M | 2.7 | 354 MiB |
-| DuckDB (same SQL → native table, no PostgreSQL) | 3.7 s | 1.09M | 19.8 | 456 MiB |
+| **Pramen end-to-end → PostgreSQL** | 6.9–9.2 s | 434k–581k | 1.2–1.4 | ~0.5 GiB |
+| DuckDB → PostgreSQL (its `postgres` extension, same query, same server) | 6.5–9.9 s | 403k–620k | 6.9–10.9 | ~45 MiB |
+| DataFusion direct (same SQL, no sink) | 1.0 s | 4.0M | 0.4 | 361 MiB |
+| DuckDB (same SQL → native table, no PostgreSQL) | 0.5 s | 8.2M | 2.1 | 689 MiB |
 
-Reading: Pramen's transform layer *is* DataFusion, so the gap to the
-engine ceiling is the load path — encoder, wire, and PostgreSQL doing
-WAL-logged inserts of 429.5 MiB on one connection. The encoder itself
-sustains 5.6–6.5M rows/s in isolation (Criterion), so it is at most ~10%
-of that budget. DuckDB writing its own columnar format never pays for a
-PostgreSQL round trip, yet needs ~2× Pramen's CPU.
-([full report with all three runs and caveats](https://github.com/akovari/pramen/blob/main/docs/benchmarks/2026-07-12-v1.md))
+Reading: on the like-for-like PostgreSQL load, **wall time is a tie
+dominated by the server** (run-to-run WAL/checkpoint variance exceeds
+the tool difference), while **Pramen does the same job on ~7× less
+CPU**. DuckDB streams this leg at an excellent ~45 MiB RSS; Pramen holds
+~0.5 GiB (bounded channels + transactional COPY buffering) — both flat
+in input size. Pramen's transform layer *is* DataFusion, so the gap to
+the engine ceiling is the load path; the encoder itself sustains
+5.6–6.5M rows/s in isolation (Criterion), at most ~10% of that budget.
+([full report with per-run numbers and caveats](https://github.com/akovari/pramen/blob/main/docs/benchmarks/2026-07-12-v1.md))
 
 ## Governance overhead per semantic record
 

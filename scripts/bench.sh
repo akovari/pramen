@@ -99,6 +99,37 @@ CREATE TABLE analytics.bench_events (
 );
 SQL
 
+# The like-for-like leg: DuckDB loading the same rows into the same
+# PostgreSQL server through its postgres extension. Same source files,
+# same query, same destination DBMS — the fairest external comparison
+# for the load path.
+if command -v duckdb > /dev/null 2>&1 \
+    && duckdb -c "INSTALL postgres; LOAD postgres;" > /dev/null 2>&1; then
+    step "baseline: DuckDB -> PostgreSQL (postgres extension, same query, same server)"
+    psql "$PRAMEN_POSTGRES_DSN" -q <<'SQL'
+DROP TABLE IF EXISTS analytics.bench_events_duckdb;
+CREATE TABLE analytics.bench_events_duckdb (
+    id           bigint NOT NULL,
+    category     text NOT NULL,
+    amount       double precision NOT NULL,
+    amount_gross double precision NOT NULL,
+    active       boolean NOT NULL,
+    created_at   timestamptz NOT NULL,
+    note         text
+);
+SQL
+    read -r dpg_wall dpg_cpu dpg_rss <<< "$(measure duckdb -c "LOAD postgres; ATTACH '$PRAMEN_POSTGRES_DSN' AS pg (TYPE postgres); INSERT INTO pg.analytics.bench_events_duckdb $QUERY")"
+    duck_pg_rows=$(psql "$PRAMEN_POSTGRES_DSN" -tA -c "SELECT count(*) FROM analytics.bench_events_duckdb")
+    psql "$PRAMEN_POSTGRES_DSN" -q -c "DROP TABLE analytics.bench_events_duckdb"
+    if [ "$duck_pg_rows" -ne $(( BENCH_ROWS / 5 * 4 )) ]; then
+        echo "FAIL: DuckDB->PostgreSQL leg loaded $duck_pg_rows rows" >&2
+        exit 1
+    fi
+else
+    step "baseline: DuckDB postgres extension unavailable; skipping the like-for-like leg"
+    dpg_wall="" dpg_cpu="" dpg_rss="" duck_pg_rows=""
+fi
+
 step "pramen: end to end (Parquet -> SQL -> binary COPY -> PostgreSQL)"
 read -r p_wall p_cpu p_rss <<< "$(measure target/release/pramen run benchmarks/parquet-to-postgres.yaml --log-format silent)"
 rows_out=$(psql "$PRAMEN_POSTGRES_DSN" -tA -c "SELECT count(*) FROM analytics.bench_events")
@@ -120,6 +151,7 @@ row() { # name wall cpu rss rows
         "$(awk -v c="$3" -v g="$input_gib" 'BEGIN { printf "%.1f", c / g }')" "$4"
 }
 row "pramen end-to-end (to PostgreSQL)" "$p_wall" "$p_cpu" "$p_rss" "$rows_out"
+row "duckdb -> PostgreSQL (pg ext)" "${dpg_wall:-}" "${dpg_cpu:-}" "${dpg_rss:-}" "${duck_pg_rows:-$rows_out}"
 row "datafusion direct (no sink)" "$df_wall" "$df_cpu" "$df_rss" "$rows_out"
 row "duckdb (native table, no PG)" "${duck_wall:-}" "${duck_cpu:-}" "${duck_rss:-}" "$rows_out"
 echo

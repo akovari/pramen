@@ -240,11 +240,14 @@ measured.
 - **P1.20** Benchmark suite v1: end-to-end throughput, CPU-s/GiB, peak RSS,
   ledger overhead, cost per accepted row; baselines vs direct DataFusion and
   DuckDB `COPY`; results published in-repo with generator configs.
-  *Done 2026-07-12: `scripts/bench.sh` (deterministic generator, three
-  measured paths, BSD/GNU `time` parsing) + Criterion benches in
-  `pramen-ai` (work key, ledger cold/warm) and `pramen-io` (COPY
-  encoder); first report in `docs/benchmarks/2026-07-12-v1.md`. Open on
-  the issue: DuckDB→PostgreSQL leg and CI perf-regression gating.*
+  *Done 2026-07-12: `scripts/bench.sh` (deterministic generator, BSD/GNU
+  `time` parsing) + Criterion benches in `pramen-ai` (work key, ledger
+  cold/warm) and `pramen-io` (COPY encoder); first report in
+  `docs/benchmarks/2026-07-12-v1.md`. Same-day revision added the
+  like-for-like DuckDB→PostgreSQL leg via its `postgres` extension:
+  wall-time tie (server-dominated), Pramen ~7× less CPU, DuckDB ~10×
+  less RSS — measured over three runs and published in the report.
+  Open on the issue: CI perf-regression gating.*
 
 **Group P2 — integration and release (after P1)**
 

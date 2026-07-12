@@ -168,9 +168,10 @@ Early implementation; no stable public API yet. What runs today:
   baseline (S1.3);
 - a reproducible benchmark suite ([scripts/bench.sh](scripts/bench.sh) +
   Criterion micro-benches): deterministic generated inputs, end-to-end
-  throughput / CPU-s per GiB / peak RSS against DataFusion-direct and
-  DuckDB baselines — first published run: 434k–590k rows/s into
-  PostgreSQL at ~10 CPU-s/GiB, governance fixed cost under 1 ms per
+  throughput / CPU / peak RSS against DataFusion-direct, DuckDB-native,
+  and a like-for-like DuckDB→PostgreSQL leg — published runs: 434k–581k
+  rows/s into PostgreSQL, wall-time tie with DuckDB's `postgres`
+  extension on ~7× less CPU, governance fixed cost under 1 ms per
   semantic record ([docs/benchmarks/](docs/benchmarks/)).
 
 The Bedrock batch adapter and the model quality-cost frontier
