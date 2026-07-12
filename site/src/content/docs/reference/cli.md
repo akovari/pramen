@@ -86,8 +86,8 @@ smoke run complete: 100 rows in / 100 rows out in 137.05ms
 ## `pramen ai status [--ledger <path>]`
 
 Show the inference ledger's work-item counts by state (pending, submitted,
-completed, failed). Defaults to `$PRAMEN_LEDGER_PATH` or
-`.pramen/ledger.sqlite`.
+completed, failed) and the review queue's decision counts. Defaults to
+`$PRAMEN_LEDGER_PATH` or `.pramen/ledger.sqlite`.
 
 ## `pramen ai evaluate`
 
@@ -133,4 +133,44 @@ The checked-in corpus is 520 synthetic support tickets, labelled by
 construction and regenerable with
 `cargo run -p pramen-ai --example gen_corpus`.
 
-Planned subcommands: `ai review` (review-queue workflow).
+## `pramen ai review`
+
+The human side of `onInvalid: review`: records whose model output failed
+validation sit durably in the review queue — withheld from every run's
+output and **never re-dispatched or re-billed while they wait** — until
+someone decides.
+
+```console
+$ pramen ai review list
+2 pending (0 accepted, 0 rejected all-time)
+
+  key:       d6064d36194eb523950f83af233aa14fa98b9971b9ff5b30b2500e2052046339
+  transform: classify  queued: 2026-07-12T11:04:41.310Z
+  reason:    field `category` has wrong type (expected Utf8, got number); missing field `confidence`
+  inputs:    {"description":"printer on fire"}
+  model out: {"category": 3}
+
+$ pramen ai review accept --key d6064d36 --output '{"category": "hardware", "confidence": 0.95}'
+accepted d6064d36…: recorded as a completed human-review result; the next
+run emits this record from the ledger at zero model cost
+
+$ pramen ai review reject --key d9b4390d
+rejected d9b4390d…: the record is permanently dropped (replays never re-dispatch it)
+```
+
+Subcommands (all take `--ledger <path>`, defaulting like `ai status`):
+
+- **`list`** — pending items, oldest first: work key, transform, reason,
+  the record's inputs, and the raw model output.
+- **`export`** — the pending queue as JSONL on stdout, one self-contained
+  object per item (full work spec included), ready for labeling tools.
+- **`accept --key <k> --output '<json>'`** — a corrected output. It is
+  validated against the item's declared schema — human decisions obey
+  exactly the model's contract — then recorded in the ledger as a
+  completed result attributed to `human-review` with zero tokens.
+  Invalid corrections are refused with the violation list.
+- **`reject --key <k>`** — permanently drop the record; replays neither
+  re-dispatch nor re-bill it.
+
+Unique key prefixes are accepted; ambiguous ones are refused so a
+decision can never land on the wrong record.

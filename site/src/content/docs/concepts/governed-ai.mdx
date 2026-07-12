@@ -101,6 +101,27 @@ any model call.
   string you parse downstream. Invalid output follows an explicit policy:
   `fail` the run, `drop` and count, or route to `review`.
 
+## The review queue
+
+`onInvalid: review` is a durable routing, not a euphemism for drop. The
+failed record — its inputs, the reason, and the raw model output — lands
+in a queue inside the same ledger database, and three guarantees hold:
+
+- **Withheld, everywhere**: a queued record never reaches the sink, in
+  this run or any replay, until a human decides.
+- **Never re-billed while waiting**: replays see the queue entry and skip
+  dispatch entirely — an undecided record costs zero tokens forever.
+- **Decisions obey the same contract as models**: an accepted correction
+  (`pramen ai review accept`) is validated against the declared output
+  schema, then recorded in the ledger as a completed result attributed to
+  `human-review` with zero tokens — from then on the record flows through
+  every run like any other cached result. A rejection is a permanent,
+  auditable drop.
+
+The workflow lives in the
+[`pramen ai review` CLI](/pramen/reference/cli/#pramen-ai-review):
+`list`, `export` (JSONL for labeling tools), `accept`, `reject`.
+
 ## Online and batch execution
 
 Both dispatch shapes run today, under identical governance:

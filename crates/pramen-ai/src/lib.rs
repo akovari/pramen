@@ -12,6 +12,9 @@
 //! - [`budget`]: token budgets enforced *before* dispatch;
 //! - [`operator`]: the `ai.extract` / `ai.classify` transform that plugs
 //!   into the [`pramen_core::runtime`] dataflow;
+//! - [`review`]: the durable review queue — records routed by
+//!   `onInvalid: review` await a human decision; accepted corrections
+//!   re-enter the ledger, rejections drop permanently (`pramen ai review`);
 //! - [`eval`]: golden-corpus evaluation — quality, cost, and latency of a
 //!   model on a versioned labelled corpus (`pramen ai evaluate`).
 
@@ -21,6 +24,7 @@ pub mod eval;
 pub mod ledger;
 pub mod operator;
 pub mod provider;
+pub mod review;
 pub mod schema;
 pub mod workkey;
 

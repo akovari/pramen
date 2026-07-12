@@ -146,6 +146,11 @@ Early implementation; no stable public API yet. What runs today:
   versioned 520-item golden support-ticket corpus
   ([corpora/](corpora/)), through the same provider adapters pipelines
   use, into timestamped diffable reports;
+- `onInvalid: review` routes invalid records to a durable review queue —
+  withheld from every run, never re-dispatched or re-billed while
+  undecided; `pramen ai review` lists/exports the queue, and accepted
+  corrections are schema-validated back into the ledger as zero-token
+  human-review results (rejections drop permanently);
 - `pramen run --smoke` rehearses a pipeline cheaply (row cap, clamped
   token ceiling, checkpointing bypassed) before a full run, and the
   documented quickstart is executed and timed in CI on every change

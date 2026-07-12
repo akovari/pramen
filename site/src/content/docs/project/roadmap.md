@@ -12,7 +12,8 @@ This page is the honest summary.
 
 - **Pipeline document** (`pramen.dev/v1alpha1`): strict parsing, complete
   path-addressed validation, published JSON Schema.
-- **CLI**: `validate`, `explain` (text + JSON), `run`, `ai status`.
+- **CLI**: `validate`, `explain` (text + JSON), `run`, `ai status`,
+  `ai evaluate`, `ai review`.
 - **End-to-end runs**: Parquet or NDJSON — local or `s3://` (S3 and
   S3-compatible stores like MinIO) — → per-batch DataFusion SQL →
   transactional binary `COPY` into PostgreSQL, with bounded memory,
@@ -65,6 +66,12 @@ This page is the honest summary.
   [fault class](/pramen/concepts/runtime/#typed-faults); a killed
   database backend mid-`COPY` fails typed with the target table
   untouched. All induced offline.
+- **Review-queue routing** (`onInvalid: review` + `pramen ai review`):
+  invalid records are durably queued with their inputs, reason, and raw
+  model output — withheld from every run and never re-dispatched or
+  re-billed while undecided. Accepted corrections are schema-validated
+  and re-enter the ledger as zero-token `human-review` results;
+  rejections are permanent, auditable drops.
 - **Benchmark suite** (`scripts/bench.sh` + Criterion): deterministic
   generated inputs, end-to-end throughput / CPU-s per GiB / peak RSS
   against DataFusion-direct and DuckDB baselines, plus encoder and
@@ -83,7 +90,6 @@ This page is the honest summary.
 
 - Bedrock and OpenAI batch adapters (the cloud legs of P1.8; the batch
   operator, ledger reconciliation, and budgets are already live).
-- Review-queue routing (X1.6).
 - The model quality-cost frontier table (S2.2 remainder): the corpus and
   `ai evaluate` harness are live; the pinned model choice per tier needs
   runs against real Bedrock models and a local vLLM.
@@ -92,8 +98,8 @@ This page is the honest summary.
 
 - **Phase 2 — extensibility and cloud breadth**: sandboxed WebAssembly
   transform components with a conformance suite and OCI distribution;
-  Azure Blob and GCS; the human review queue; Postgres-backed shared
-  ledger/checkpoint backends for fleets.
+  Azure Blob and GCS; a web UI over the review queue; Postgres-backed
+  shared ledger/checkpoint backends for fleets.
 - **Phase 3 — expansion and research**: ADBC warehouse sinks, Flight SQL,
   fan-out DAGs, a connector SDK — and the research program: a
   peer-reviewed systems paper on cost-optimal, restart-safe semantic

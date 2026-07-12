@@ -6,6 +6,7 @@
 //! `pramen ai evaluate` measures model quality and cost on a golden corpus).
 
 mod evaluate;
+mod review;
 mod run;
 
 use clap::{Parser, Subcommand};
@@ -123,6 +124,38 @@ enum AiCommand {
         #[arg(long)]
         output_price: Option<f64>,
     },
+    /// The review queue: records withheld by `onInvalid: review`.
+    Review {
+        #[command(subcommand)]
+        command: ReviewCommand,
+        /// Ledger path (defaults to $PRAMEN_LEDGER_PATH or .pramen/ledger.sqlite).
+        #[arg(long, global = true)]
+        ledger: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ReviewCommand {
+    /// Show pending items awaiting a decision.
+    List,
+    /// Emit pending items as JSONL (one self-contained object per item).
+    Export,
+    /// Accept a corrected output; it is schema-validated and recorded in
+    /// the ledger as a completed human-review result.
+    Accept {
+        /// Work key (a unique prefix is enough).
+        #[arg(long)]
+        key: String,
+        /// The corrected output as JSON, matching the declared fields.
+        #[arg(long)]
+        output: String,
+    },
+    /// Permanently drop a queued record.
+    Reject {
+        /// Work key (a unique prefix is enough).
+        #[arg(long)]
+        key: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -212,6 +245,24 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Command::Ai {
+            command: AiCommand::Review { command, ledger },
+        } => {
+            let path = ledger.unwrap_or_else(run::ledger_path);
+            let result = match command {
+                ReviewCommand::List => review::list(&path),
+                ReviewCommand::Export => review::export(&path),
+                ReviewCommand::Accept { key, output } => review::accept(&path, &key, &output),
+                ReviewCommand::Reject { key } => review::reject(&path, &key),
+            };
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("pramen: ai review failed: {message}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
     }
 }
 
@@ -221,13 +272,15 @@ fn ai_status(ledger: Option<PathBuf>) -> ExitCode {
         println!("no ledger at {} (nothing recorded yet)", path.display());
         return ExitCode::SUCCESS;
     }
-    match pramen_ai::ledger::Ledger::open(&path).and_then(|l| l.counts()) {
-        Ok((pending, submitted, completed, failed)) => {
+    match pramen_ai::ledger::Ledger::open(&path).and_then(|l| Ok((l.counts()?, l.review_counts()?)))
+    {
+        Ok(((pending, submitted, completed, failed), (in_review, accepted, rejected))) => {
             println!("ledger: {}", path.display());
             println!("  pending:   {pending}");
             println!("  submitted: {submitted}");
             println!("  completed: {completed}");
             println!("  failed:    {failed}");
+            println!("  review:    {in_review} pending, {accepted} accepted, {rejected} rejected");
             ExitCode::SUCCESS
         }
         Err(error) => {

@@ -101,9 +101,26 @@ impl Ledger {
                 created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                 updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
-            CREATE INDEX IF NOT EXISTS idx_work_items_state ON work_items(state);",
+            CREATE INDEX IF NOT EXISTS idx_work_items_state ON work_items(state);
+            CREATE TABLE IF NOT EXISTS review_queue (
+                work_key      TEXT PRIMARY KEY REFERENCES work_items(work_key),
+                transform_id  TEXT NOT NULL,
+                reason        TEXT NOT NULL,
+                raw_output    TEXT,
+                status        TEXT NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending','accepted','rejected')),
+                created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                decided_at    TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue(status);",
         )?;
         Ok(Self { conn })
+    }
+
+    /// The underlying connection, for sibling modules extending the same
+    /// database (the review queue).
+    pub(crate) fn connection(&self) -> &Connection {
+        &self.conn
     }
 
     /// Register work if unknown. A known item — in any state — is left

@@ -17,14 +17,20 @@
 //!   A run that crashes after submission reconciles on restart by job and
 //!   item id instead of resubmitting — submitted work is never re-billed.
 //!
-//! v1 scope notes: rows are processed sequentially (bounded concurrency is
-//! a planned optimization), and `review` routing drops the record with a
-//! warning until the review queue exists (X1.6).
+//! `onInvalid: review` routes the record to the durable
+//! [review queue](crate::review): the record is withheld from this run's
+//! output, and replays leave it queued — no re-dispatch, no re-billing —
+//! until a human accepts a correction (which re-enters the ledger) or
+//! rejects it (permanent drop).
+//!
+//! v1 scope note: rows are processed sequentially (bounded concurrency is
+//! a planned optimization).
 
 use crate::budget;
 use crate::error::AiError;
 use crate::ledger::{Ledger, RecordedResult, WorkState};
 use crate::provider::{BatchStatus, InferenceRequest, Provider, ProviderResponse};
+use crate::review::ReviewStatus;
 use crate::schema::{output_json_schema, validate_output};
 use crate::workkey::WorkSpec;
 use arrow::array::{
@@ -54,6 +60,8 @@ pub struct SemanticTransform {
     ledger: Ledger,
     output_schema: Value,
     dropped_invalid: u64,
+    /// Records routed to (or still withheld by) the review queue this run.
+    routed_review: u64,
     /// Provider-reported tokens (input + output) consumed this run,
     /// checked against `budget.maxRunTokens`. Ledger reuse adds nothing.
     run_tokens: u64,
@@ -117,6 +125,7 @@ impl SemanticTransform {
             ledger,
             output_schema,
             dropped_invalid: 0,
+            routed_review: 0,
             run_tokens: 0,
             consecutive_invalid: 0,
             batch_mode,
@@ -185,10 +194,12 @@ impl SemanticTransform {
         self.ledger
             .upsert_pending(&key, &spec.canonical())
             .map_err(|e| self.stage_error(&e))?;
-        if let Some(WorkState::Completed(recorded)) =
-            self.ledger.state(&key).map_err(|e| self.stage_error(&e))?
-        {
-            return Ok(Some(recorded.output));
+        match self.ledger.state(&key).map_err(|e| self.stage_error(&e))? {
+            Some(WorkState::Completed(recorded)) => return Ok(Some(recorded.output)),
+            // A failed record may be sitting in the review queue; a
+            // queued or rejected record is never re-dispatched.
+            Some(WorkState::Failed { .. }) if self.withheld_by_review(&key)? => return Ok(None),
+            _ => {}
         }
 
         // Budget gate: nothing is dispatched for an over-budget record.
@@ -196,7 +207,7 @@ impl SemanticTransform {
         let request_text = Self::request_text(&request);
         if let Err(error) = budget::enforce_input_budget(self.config.budget.as_ref(), &request_text)
         {
-            return self.apply_invalid_policy(&key, &error.to_string());
+            return self.apply_invalid_policy(&key, &error.to_string(), None);
         }
 
         // Run ceiling: before spending anything more, project this
@@ -263,7 +274,7 @@ impl SemanticTransform {
                         self.config.id,
                     )));
                 }
-                self.apply_invalid_policy(key, &violation)
+                self.apply_invalid_policy(key, &violation, Some(&response.text))
             }
         }
     }
@@ -293,6 +304,7 @@ impl SemanticTransform {
         &mut self,
         key: &str,
         reason: &str,
+        raw_output: Option<&str>,
     ) -> Result<Option<Value>, StageError> {
         match self.config.validation.on_invalid {
             InvalidPolicy::Fail => Err(StageError::InvalidData(format!(
@@ -305,13 +317,46 @@ impl SemanticTransform {
                 Ok(None)
             }
             InvalidPolicy::Review => {
-                self.dropped_invalid += 1;
+                self.routed_review += 1;
+                self.ledger
+                    .enqueue_review(key, &self.config.id, reason, raw_output)
+                    .map_err(|e| self.stage_error(&e))?;
                 tracing::warn!(
                     transform = %self.config.id, %key, %reason,
-                    "record routed to review; the review queue (X1.6) is not built yet, so the record is dropped from this run"
+                    "record routed to the review queue (decide with `pramen ai review`)"
                 );
                 Ok(None)
             }
+        }
+    }
+
+    /// Whether a failed record is withheld from this run by the review
+    /// queue: queued (awaiting a decision) or rejected (permanent drop).
+    /// Retryable failures — never routed to review — return `false`.
+    fn withheld_by_review(&mut self, key: &str) -> Result<bool, StageError> {
+        match self
+            .ledger
+            .review_status(key)
+            .map_err(|e| self.stage_error(&e))?
+        {
+            Some(ReviewStatus::Pending) => {
+                self.routed_review += 1;
+                tracing::info!(
+                    transform = %self.config.id, %key,
+                    "record awaiting review; withheld without re-dispatch"
+                );
+                Ok(true)
+            }
+            Some(ReviewStatus::Rejected) => {
+                tracing::info!(
+                    transform = %self.config.id, %key,
+                    "record rejected in review; permanently dropped"
+                );
+                Ok(true)
+            }
+            // Accepted reviews are completed ledger results, resolved
+            // before this check; anything else is a retryable failure.
+            _ => Ok(false),
         }
     }
 }
@@ -531,6 +576,8 @@ impl SemanticTransform {
                 // Belongs to a job reconciliation already reopened.
                 return Ok(());
             }
+            // Queued for review or rejected: withheld, not resubmitted.
+            Some(WorkState::Failed { .. }) if self.withheld_by_review(&key)? => return Ok(()),
             _ => {}
         }
         if self.pending.contains_key(&key) {
@@ -544,7 +591,7 @@ impl SemanticTransform {
         {
             // Policy applies now; the buffered row is filtered at emit
             // because its work never completes.
-            self.apply_invalid_policy(&key, &violation.to_string())?;
+            self.apply_invalid_policy(&key, &violation.to_string(), None)?;
             return Ok(());
         }
         self.pending.insert(key, request);
@@ -681,7 +728,7 @@ impl SemanticTransform {
                 self.ledger
                     .mark_failed(key, &format!("batch item failed: {reason}"))
                     .map_err(|e| self.stage_error(&e))?;
-                self.apply_invalid_policy(key, &reason)?;
+                self.apply_invalid_policy(key, &reason, None)?;
                 Ok(())
             }
         }
@@ -764,6 +811,13 @@ impl Transform for SemanticTransform {
                 transform = %self.config.id,
                 dropped = self.dropped_invalid,
                 "records dropped by onInvalid policy during this run"
+            );
+        }
+        if self.routed_review > 0 {
+            tracing::warn!(
+                transform = %self.config.id,
+                queued = self.routed_review,
+                "records withheld for review this run; decide with `pramen ai review`"
             );
         }
         Ok(emitted)
@@ -1227,6 +1281,128 @@ mod tests {
         let out = transform.finish().await.unwrap();
         assert_eq!(out[0].num_rows(), 0, "invalid batch items dropped");
         let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn review_routing_withholds_then_reuses_the_human_decision() {
+        let ledger_path = std::env::temp_dir().join(format!(
+            "pramen-operator-test-{}-review.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&ledger_path);
+        let provider = Arc::new(GarbageProvider {
+            calls: std::sync::atomic::AtomicU64::new(0),
+        });
+        let cfg = config(InvalidPolicy::Review);
+
+        // Run 1: invalid output routes the record to the queue; the row
+        // is withheld from the output.
+        let mut first = SemanticTransform::new(
+            "ai.classify",
+            cfg.clone(),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&ledger_path).unwrap(),
+        )
+        .unwrap();
+        let out = first.apply(batch(&["printer on fire"])).await.unwrap();
+        assert_eq!(out[0].num_rows(), 0, "queued record withheld");
+        assert_eq!(provider.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let ledger = Ledger::open(&ledger_path).unwrap();
+        let pending = ledger.pending_reviews().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(
+            pending[0].raw_output.as_deref(),
+            Some("{\"wrong\": true}"),
+            "the raw model output is preserved for the reviewer"
+        );
+
+        // Run 2 (still undecided): withheld again, and — the crucial
+        // governance property — not re-dispatched, not re-billed.
+        let mut replay = SemanticTransform::new(
+            "ai.classify",
+            cfg.clone(),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&ledger_path).unwrap(),
+        )
+        .unwrap();
+        let out = replay.apply(batch(&["printer on fire"])).await.unwrap();
+        assert_eq!(out[0].num_rows(), 0);
+        assert_eq!(
+            provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "a queued record is never re-dispatched"
+        );
+
+        // A human accepts a correction; the next run resolves the record
+        // from the ledger like any other completed work.
+        ledger
+            .accept_review(
+                &pending[0].work_key,
+                &serde_json::json!({"category": "hardware", "score": 0.99}),
+            )
+            .unwrap();
+        let mut resolved = SemanticTransform::new(
+            "ai.classify",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&ledger_path).unwrap(),
+        )
+        .unwrap();
+        let out = resolved.apply(batch(&["printer on fire"])).await.unwrap();
+        assert_eq!(out[0].num_rows(), 1, "accepted record flows through");
+        assert_eq!(
+            provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the human decision costs zero model calls"
+        );
+        let _ = std::fs::remove_file(ledger_path);
+    }
+
+    #[tokio::test]
+    async fn rejected_reviews_stay_dropped_on_replay() {
+        let ledger_path = std::env::temp_dir().join(format!(
+            "pramen-operator-test-{}-reject.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&ledger_path);
+        let provider = Arc::new(GarbageProvider {
+            calls: std::sync::atomic::AtomicU64::new(0),
+        });
+        let cfg = config(InvalidPolicy::Review);
+        let mut first = SemanticTransform::new(
+            "ai.classify",
+            cfg.clone(),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&ledger_path).unwrap(),
+        )
+        .unwrap();
+        first.apply(batch(&["printer on fire"])).await.unwrap();
+
+        let ledger = Ledger::open(&ledger_path).unwrap();
+        let key = ledger.pending_reviews().unwrap()[0].work_key.clone();
+        ledger.reject_review(&key).unwrap();
+
+        let mut replay = SemanticTransform::new(
+            "ai.classify",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&ledger_path).unwrap(),
+        )
+        .unwrap();
+        let out = replay.apply(batch(&["printer on fire"])).await.unwrap();
+        assert_eq!(out[0].num_rows(), 0, "rejected record stays out");
+        assert_eq!(
+            provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "rejection is permanent: no re-dispatch"
+        );
+        let _ = std::fs::remove_file(ledger_path);
     }
 
     #[tokio::test]
