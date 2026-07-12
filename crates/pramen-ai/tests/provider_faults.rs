@@ -99,14 +99,15 @@ async fn protocol_shaped_json_without_choices_is_a_protocol_fault() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refused_connection_is_a_typed_transport_fault() {
-    // Bind a port and drop the listener so the port is closed but was
-    // recently valid — the connection is refused, not hung.
+    // Hold a listener so we can aim at a sibling port that is definitely
+    // closed. Dropping a just-used port leaves TIME_WAIT on Windows, where
+    // reqwest may spin until the client timeout instead of ECONNREFUSED.
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
-    drop(listener);
+    let port = listener.local_addr().unwrap().port();
+    let refused = format!("http://127.0.0.1:{}/v1", port.saturating_add(1));
 
-    let provider = OpenAiCompatProvider::new(&format!("http://{addr}/v1"), "m", None)
-        .with_timeout(Duration::from_secs(2));
+    let provider =
+        OpenAiCompatProvider::new(&refused, "m", None).with_timeout(Duration::from_secs(2));
     let error = provider.invoke(&request()).await.unwrap_err();
     assert_eq!(fault_of(error), ProviderFault::Transport);
 }

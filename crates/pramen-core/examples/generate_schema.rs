@@ -1,7 +1,8 @@
 //! Regenerates the committed pipeline JSON Schema artifact:
 //!
 //! ```sh
-//! cargo run -p pramen-core --example generate_schema > docs/schema/pipeline.v1alpha1.schema.json
+//! cargo run -p pramen-core --example generate_schema --quiet 2>/dev/null \
+//!   > docs/schema/pipeline.v1alpha1.schema.json
 //! ```
 //!
 //! A unit test fails when the committed artifact drifts from the code.

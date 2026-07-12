@@ -1,0 +1,8 @@
+# datafusion's debug link on macOS can emit `linker-messages` warnings about
+# oversized __eh_frame sections; with CARGO_BUILD_WARNINGS=deny that becomes
+# a build failure. The warning is benign (unwind metadata size), not unsoundness.
+[target.aarch64-apple-darwin]
+rustflags = ["-A", "linker-messages"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-A", "linker-messages"]

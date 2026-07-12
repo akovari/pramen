@@ -139,7 +139,8 @@ fn committed_schema_artifact_is_current() {
         committed,
         json_schema(),
         "docs/schema/pipeline.v1alpha1.schema.json is stale; regenerate with \
-         `cargo run -p pramen-core --example generate_schema > docs/schema/pipeline.v1alpha1.schema.json`"
+         `cargo run -p pramen-core --example generate_schema --quiet 2>/dev/null \
+          > docs/schema/pipeline.v1alpha1.schema.json`"
     );
 }
 
