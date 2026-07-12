@@ -64,7 +64,10 @@ fn put_text(buf: &mut BytesMut, value: &str) -> Result<(), StageError> {
 ///
 /// Returns [`StageError::InvalidData`] for Arrow types outside the v1
 /// matrix or values that cannot be represented.
-pub(super) fn encode_batch(batch: &RecordBatch, buf: &mut BytesMut) -> Result<(), StageError> {
+// `pub` (not `pub(super)`) so the Criterion benchmark harness can
+// measure the encoder in isolation; it is not part of the stable API.
+#[doc(hidden)]
+pub fn encode_batch(batch: &RecordBatch, buf: &mut BytesMut) -> Result<(), StageError> {
     let columns = batch.columns();
     let field_count = i16::try_from(columns.len())
         .map_err(|_| StageError::InvalidData("more than 32767 columns".to_owned()))?;

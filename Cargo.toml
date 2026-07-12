@@ -30,6 +30,7 @@ aws-config = { version = "1", default-features = false, features = ["behavior-ve
 aws-sdk-bedrockruntime = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
+criterion = "0.7"
 datafusion = "50"
 futures = "0.3"
 object_store = { version = "0.12", features = ["aws"] }

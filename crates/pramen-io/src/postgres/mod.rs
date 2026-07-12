@@ -2,6 +2,8 @@
 
 mod encode;
 
+pub use encode::encode_batch;
+
 use bytes::BytesMut;
 use futures::SinkExt;
 use pramen_core::runtime::{Sink, StageError};

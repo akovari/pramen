@@ -62,6 +62,11 @@ This page is the honest summary.
   [fault class](/pramen/concepts/runtime/#typed-faults); a killed
   database backend mid-`COPY` fails typed with the target table
   untouched. All induced offline.
+- **Benchmark suite** (`scripts/bench.sh` + Criterion): deterministic
+  generated inputs, end-to-end throughput / CPU-s per GiB / peak RSS
+  against DataFusion-direct and DuckDB baselines, plus encoder and
+  ledger micro-benches — results published with methodology in
+  [measured results](/pramen/project/benchmarks/).
 
 ## Spike-validated (design proven)
 
@@ -80,8 +85,6 @@ This page is the honest summary.
 - The model quality-cost frontier table (S2.2 remainder): the corpus and
   `ai evaluate` harness are live; the pinned model choice per tier needs
   runs against real Bedrock models and a local vLLM.
-- The benchmark suite (P1.20): end-to-end throughput, CPU-s/GiB, peak
-  RSS, ledger overhead, and baselines vs direct DataFusion and DuckDB.
 
 ## After v1
 

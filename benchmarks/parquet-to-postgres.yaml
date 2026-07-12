@@ -1,0 +1,28 @@
+# The benchmark-suite pipeline (P1.20): multi-file Parquet -> SQL filter
+# and derivation -> native binary COPY into PostgreSQL.
+#
+# Driven by scripts/bench.sh, which generates the input deterministically
+# (crates/pramen-io/examples/gen_bench_data.rs) and measures wall time,
+# CPU seconds, and peak RSS against the DataFusion-direct engine ceiling.
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: bench-parquet-to-postgres
+spec:
+  source:
+    type: object_store
+    url: /tmp/pramen-bench-input
+    format:
+      type: parquet
+  transforms:
+    - id: enrich
+      type: sql
+      query: >
+        SELECT id, category, amount, amount * 1.21 AS amount_gross,
+               active, created_at, note
+        FROM input
+        WHERE category <> 'epsilon'
+  sink:
+    type: postgres
+    target: analytics.bench_events
+    mode: append

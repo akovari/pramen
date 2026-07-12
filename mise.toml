@@ -45,6 +45,10 @@ env = { RUSTDOCFLAGS = "-D warnings" }
 description = "Run criterion benchmarks"
 run = "cargo bench --workspace"
 
+[tasks.bench-e2e]
+description = "End-to-end benchmark suite (needs PRAMEN_POSTGRES_DSN)"
+run = "./scripts/bench.sh"
+
 [tasks.ci]
 description = "The full local gate; identical checks run in GitHub Actions"
 depends = ["lint", "deny", "test", "docs"]

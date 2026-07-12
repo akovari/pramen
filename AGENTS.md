@@ -27,6 +27,8 @@ Everything runs through mise; CI runs the same tasks.
 - `mise run ci` — full local gate (fmt, clippy, deny, nextest, doc tests)
 - `mise run test` / `mise run cov` — tests / coverage with ratchet check
 - `mise run bench` — criterion benches against stored baselines
+- `mise run bench-e2e` — end-to-end benchmark suite (`scripts/bench.sh`;
+  needs `PRAMEN_POSTGRES_DSN`; publishes reports to `docs/benchmarks/`)
 
 ## Code standards
 

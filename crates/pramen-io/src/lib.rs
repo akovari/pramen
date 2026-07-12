@@ -16,5 +16,7 @@ mod source;
 mod sql;
 
 pub use postgres::PostgresCopySink;
+#[doc(hidden)]
+pub use postgres::encode_batch;
 pub use source::{NdjsonSource, ParquetSource, list_work_units};
 pub use sql::SqlTransform;

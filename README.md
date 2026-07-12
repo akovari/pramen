@@ -157,7 +157,13 @@ Early implementation; no stable public API yet. What runs today:
   [docs/spikes/](docs/spikes/): durable SQLite inference ledger with 100%
   result reuse and crash recovery (S1.1), bounded-memory Parquet + SQL at
   ~3M rows/s (S1.2), and native binary `COPY` at 3.1x the `psql \copy`
-  baseline (S1.3).
+  baseline (S1.3);
+- a reproducible benchmark suite ([scripts/bench.sh](scripts/bench.sh) +
+  Criterion micro-benches): deterministic generated inputs, end-to-end
+  throughput / CPU-s per GiB / peak RSS against DataFusion-direct and
+  DuckDB baselines — first published run: 434k–590k rows/s into
+  PostgreSQL at ~10 CPU-s/GiB, governance fixed cost under 1 ms per
+  semantic record ([docs/benchmarks/](docs/benchmarks/)).
 
 The Bedrock/OpenAI batch adapters and the model quality-cost frontier
 table are next on the [Phase 1 workstreams](docs/implementation-plan.md).
@@ -214,8 +220,7 @@ unblocks):
 2. the model quality-cost frontier table (S2.2 remainder — the corpus
    and `ai evaluate` harness are live; runs against real Bedrock models
    and a local vLLM remain);
-3. the benchmark suite (P1.20);
-4. the WASM WIT component round-trip spike, gating the extensibility
+3. the WASM WIT component round-trip spike, gating the extensibility
    milestone, not v1 (S1.4).
 
 The subsequent AWS acceptance test should compare client-streamed

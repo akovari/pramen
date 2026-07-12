@@ -4,11 +4,42 @@ description: Every performance claim, with its methodology and raw numbers.
 ---
 
 Pramen's development rule: **no performance claim without a measurement**,
-and every measurement gets a report with machine details and methodology in
-[`docs/spikes/`](https://github.com/akovari/pramen/tree/main/docs/spikes).
+and every measurement gets a report with machine details and methodology —
+spike reports in
+[`docs/spikes/`](https://github.com/akovari/pramen/tree/main/docs/spikes),
+benchmark-suite reports in
+[`docs/benchmarks/`](https://github.com/akovari/pramen/tree/main/docs/benchmarks).
 These are the headline results so far. All numbers below are from an Apple
-Silicon laptop; treat them as relative evidence, not absolute promises —
-the formal benchmark suite (P1.20) will publish reproducible baselines.
+Silicon laptop; treat them as relative evidence, not absolute promises.
+
+## Benchmark suite v1 (reproducible)
+
+The suite (`scripts/bench.sh`) generates its input deterministically —
+5M rows, six-type column mix, 0.302 GiB of Snappy Parquet — and runs the
+same projection + derivation + filter (4M rows out) through three paths,
+measuring wall time, CPU seconds, and peak RSS with `/usr/bin/time`:
+
+| Path | Wall time | Rows out/s | CPU-s / GiB in | Peak RSS |
+| --- | --- | --- | --- | --- |
+| **Pramen end-to-end → PostgreSQL** | 6.8–9.2 s | 434k–590k | ~10 | 376–531 MiB |
+| DataFusion direct (same SQL, no sink) | 1.3 s | 2.99M | 2.7 | 354 MiB |
+| DuckDB (same SQL → native table, no PostgreSQL) | 3.7 s | 1.09M | 19.8 | 456 MiB |
+
+Reading: Pramen's transform layer *is* DataFusion, so the gap to the
+engine ceiling is the load path — encoder, wire, and PostgreSQL doing
+WAL-logged inserts of 429.5 MiB on one connection. The encoder itself
+sustains 5.6–6.5M rows/s in isolation (Criterion), so it is at most ~10%
+of that budget. DuckDB writing its own columnar format never pays for a
+PostgreSQL round trip, yet needs ~2× Pramen's CPU.
+([full report with all three runs and caveats](https://github.com/akovari/pramen/blob/main/docs/benchmarks/2026-07-12-v1.md))
+
+## Governance overhead per semantic record
+
+Criterion micro-benches (`cargo bench -p pramen-ai`): canonicalize + hash
+a full work specification in **44 µs**; record a completed result in the
+fsync'd WAL ledger in **715 µs**; reuse a recorded result in **5 µs**.
+The entire governance fixed cost is under a millisecond — reusing a
+governed result is ~5,000× cheaper than repeating a 250 ms model call.
 
 ## PostgreSQL loading: binary COPY vs `psql \copy`
 
