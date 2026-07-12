@@ -276,7 +276,8 @@ measured.
   like-for-like DuckDB→PostgreSQL leg via its `postgres` extension:
   wall-time tie (server-dominated), Pramen ~7× less CPU, DuckDB ~10×
   less RSS — measured over three runs and published in the report.
-  Open on the issue: CI perf-regression gating.*
+  CI perf-regression gating landed with T1.7 (`scripts/perf-gate.sh`,
+  `.github/workflows/perf.yml`).*
 
 **Group P2 — integration and release (after P1)**
 
@@ -286,6 +287,11 @@ measured.
 - **P2.2** v0.1 release via cargo-dist; quickstart validated on a machine that
   has never seen the repo; announce-readiness checklist (README, examples,
   known limitations honestly listed).
+  *In progress 2026-07-12: `cargo-dist` plan verified (four tier-1
+  targets + installers); `scripts/release-quickstart.sh` and
+  `docs/release/v0.1-checklist.md` added; known limitations listed in
+  README. Remaining: tag `0.1.0`, release workflow publish, fresh-machine
+  validation with a downloaded binary.*
 
 Phase 1 exit = architecture §16 Phase 1 criterion, plus: coverage floor met,
 benchmark baselines locked as regression references.

@@ -188,6 +188,25 @@ with measurable exit criteria lives in the
 [implementation plan](docs/implementation-plan.md); contributor and agent
 conventions live in [AGENTS.md](AGENTS.md).
 
+## Known limitations (v0.1)
+
+Pramen is lean and measured, not feature-complete. Ship with these stated:
+
+- **Single-node, single-connection sink** — no horizontal scaling, no parallel
+  COPY, no fan-out DAGs.
+- **PostgreSQL sink only** — ADBC and Flight SQL are post-v1.
+- **Linear pipelines** — one source, ordered transforms, one sink.
+- **Bedrock batch minimum job size** — the service enforces a minimum records
+  per model invocation job (~1,000); smaller `execution: batch` runs fail at
+  provider validation.
+- **Cloud acceptance not in CI** — live Bedrock, frontier model runs, and the
+  1M-record AWS acceptance test need credentials; PR gates are fully offline.
+- **WASM transforms are Phase 2** — the ABI is spike-validated, not wired in.
+- **Review queue is CLI-only** — no web UI yet.
+
+The [v0.1 release checklist](docs/release/v0.1-checklist.md) tracks what
+must be green before tagging.
+
 ## Initial decisions
 
 - **Core language:** Rust

@@ -33,6 +33,8 @@ Everything runs through mise; CI runs the same tasks.
   (`scripts/perf-gate.sh [base-ref]`: benches the merge-base in a
   worktree, re-benches HEAD, fails on >5% regression at the lower 95%
   CI bound of designated benches)
+- `mise run release-quickstart` — P2.2 gate: release binary + measured
+  quickstart (`scripts/release-quickstart.sh`; needs `PRAMEN_POSTGRES_DSN`)
 
 ## Code standards
 

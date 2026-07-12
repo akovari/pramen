@@ -1,14 +1,33 @@
 ---
 title: Installation
-description: Install Pramen from source today; release binaries are coming with v0.1.
+description: Install Pramen from a release binary or build from source.
 ---
 
 :::note
-Pramen has not shipped its first binary release yet. Release binaries for
-Linux (x86_64, aarch64), macOS (aarch64), and Windows (x86_64) with shell
-and PowerShell installers are prepared via `cargo-dist` and arrive with
-v0.1. Until then, build from source.
+v0.1 release binaries are built with `cargo-dist` for Linux (x86_64 and
+aarch64, static musl), macOS (aarch64), and Windows (x86_64), plus shell
+and PowerShell installers. Until the `0.1.0` tag ships, build from source
+below.
 :::
+
+## Release binaries (v0.1+)
+
+When a GitHub Release is published, pick the artifact for your platform:
+
+| Platform | Artifact |
+|----------|----------|
+| Linux x86_64 | `pramen-*-x86_64-unknown-linux-musl.tar.gz` |
+| Linux aarch64 | `pramen-*-aarch64-unknown-linux-musl.tar.gz` |
+| macOS (Apple Silicon) | `pramen-*-aarch64-apple-darwin.tar.gz` |
+| Windows x86_64 | `pramen-*-x86_64-pc-windows-msvc.zip` |
+
+Shell and PowerShell installers are also attached to the release. After
+installing, verify:
+
+```bash
+pramen --version
+pramen validate examples/local-parquet-to-postgres.yaml
+```
 
 ## Build from source
 

@@ -53,6 +53,10 @@ run = "./scripts/bench.sh"
 description = "Perf regression gate: designated benches vs the merge-base"
 run = "./scripts/perf-gate.sh"
 
+[tasks.release-quickstart]
+description = "P2.2 gate: release binary + measured quickstart"
+run = "./scripts/release-quickstart.sh"
+
 [tasks.ci]
 description = "The full local gate; identical checks run in GitHub Actions"
 depends = ["lint", "deny", "test", "docs"]
