@@ -8,6 +8,7 @@
 mod evaluate;
 mod review;
 mod run;
+mod transform_test;
 
 use clap::{Parser, Subcommand};
 use pramen_core::observe::LogFormat;
@@ -88,6 +89,11 @@ enum Command {
         #[command(subcommand)]
         command: AiCommand,
     },
+    /// WebAssembly transform utilities.
+    Transform {
+        #[command(subcommand)]
+        command: TransformCommand,
+    },
 }
 
 #[derive(Subcommand)]
@@ -135,6 +141,19 @@ enum AiCommand {
         /// Ledger path (defaults to $PRAMEN_LEDGER_PATH or .pramen/ledger.sqlite).
         #[arg(long, global = true)]
         ledger: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum TransformCommand {
+    /// Run a fixture batch through a component with production limits.
+    Test {
+        /// Path to the `.wasm` component (defaults to the S1.4 conformance fixture).
+        #[arg(long)]
+        component: Option<PathBuf>,
+        /// Rows in the synthetic fixture batch.
+        #[arg(long, default_value_t = 8_192)]
+        rows: usize,
     },
 }
 
@@ -204,7 +223,7 @@ fn main() -> ExitCode {
         } => match load(&file) {
             Ok(spec) => {
                 let smoke = smoke.then_some(run::SmokeOptions { rows: smoke_rows });
-                match run::execute(&spec, smoke, otlp_endpoint.as_deref()) {
+                match run::execute(&spec, Some(&file), smoke, otlp_endpoint.as_deref()) {
                     Ok(()) => ExitCode::SUCCESS,
                     Err(message) => {
                         eprintln!("pramen: run failed: {message}");
@@ -264,6 +283,21 @@ fn main() -> ExitCode {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(message) => {
                     eprintln!("pramen: ai review failed: {message}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Command::Transform {
+            command: TransformCommand::Test { component, rows },
+        } => {
+            let args = transform_test::TransformTestArgs {
+                component: component.unwrap_or_else(transform_test::default_component),
+                rows,
+            };
+            match transform_test::execute(&args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("pramen: transform test failed: {message}");
                     ExitCode::FAILURE
                 }
             }
@@ -350,6 +384,9 @@ fn explain(spec: &PipelineSpec) {
                     ai.output.fields.len(),
                     ai.validation.on_invalid,
                 );
+            }
+            TransformSpec::Wasm(wasm) => {
+                println!("  transform {}: wasm component {}", wasm.id, wasm.component);
             }
         }
     }

@@ -131,6 +131,9 @@ pub enum TransformSpec {
     /// Governed semantic classification into typed columns.
     #[serde(rename = "ai.classify")]
     AiClassify(AiTransform),
+    /// A sandboxed WebAssembly component transform (Arrow IPC in/out).
+    #[serde(rename = "wasm")]
+    Wasm(WasmTransform),
 }
 
 impl TransformSpec {
@@ -140,6 +143,7 @@ impl TransformSpec {
         match self {
             Self::Sql(transform) => &transform.id,
             Self::AiExtract(transform) | Self::AiClassify(transform) => &transform.id,
+            Self::Wasm(transform) => &transform.id,
         }
     }
 }
@@ -152,6 +156,38 @@ pub struct SqlTransform {
     pub id: String,
     /// SQL text; the incoming stream is visible as the table `input`.
     pub query: String,
+}
+
+/// A sandboxed WebAssembly component transform.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WasmTransform {
+    /// Unique step identifier.
+    pub id: String,
+    /// Path to a `.wasm` component artifact (absolute or relative to the
+    /// pipeline document).
+    pub component: String,
+    /// Resource limits enforced on every batch invocation.
+    #[serde(default)]
+    pub limits: WasmLimitsSpec,
+}
+
+/// Host-enforced limits for a `type: wasm` transform.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WasmLimitsSpec {
+    /// Maximum guest linear memory in mebibytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_mb: Option<u32>,
+    /// Fuel budget per invocation (`None` = use the runtime default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuel: Option<u64>,
+    /// Maximum Arrow IPC input size in mebibytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_input_mb: Option<u32>,
+    /// Maximum Arrow IPC output size in mebibytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_mb: Option<u32>,
 }
 
 /// A governed semantic transform (`ai.extract` / `ai.classify`).

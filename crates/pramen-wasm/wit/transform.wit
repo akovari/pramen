@@ -1,0 +1,11 @@
+package pramen:transform@0.1.0;
+
+/// The candidate v2 transform ABI (architecture §8): one function, Arrow
+/// IPC stream bytes in, Arrow IPC stream bytes out. Schema negotiation,
+/// limits, and identity all live host-side; the guest is a pure
+/// batch-to-batch function.
+world transform {
+    /// Transform one Arrow IPC stream (one or more record batches) into
+    /// another. A string error fails the batch, not the process.
+    export run: func(batch: list<u8>) -> result<list<u8>, string>;
+}

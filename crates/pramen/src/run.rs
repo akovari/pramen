@@ -63,12 +63,13 @@ impl Default for SmokeOptions {
 /// Returns a human-readable message when planning or execution fails.
 pub fn execute(
     spec: &PipelineSpec,
+    pipeline_file: Option<&std::path::Path>,
     smoke: Option<SmokeOptions>,
     otlp_endpoint: Option<&str>,
 ) -> Result<(), String> {
     let tokio_runtime = tokio::runtime::Runtime::new()
         .map_err(|error| format!("failed to start async runtime: {error}"))?;
-    let outcome = tokio_runtime.block_on(execute_async(spec, smoke))?;
+    let outcome = tokio_runtime.block_on(execute_async(spec, pipeline_file, smoke))?;
     // The exporter uses a blocking HTTP client, so it runs after (not
     // inside) the async runtime.
     if let (Some(endpoint), Some((snapshot, seconds))) = (otlp_endpoint, outcome) {
@@ -91,6 +92,7 @@ type RunOutcome = Option<(pramen_core::observe::MetricsSnapshot, f64)>;
 
 async fn execute_async(
     spec: &PipelineSpec,
+    pipeline_file: Option<&std::path::Path>,
     smoke: Option<SmokeOptions>,
 ) -> Result<RunOutcome, String> {
     let started = Instant::now();
@@ -165,7 +167,11 @@ async fn execute_async(
             remaining: options.rows,
         });
     }
-    let transforms = plan_transforms(spec, smoke.is_some()).await?;
+    let wasm_cache = pramen_wasm::ArtifactCache::new();
+    let pipeline_dir = pipeline_file
+        .and_then(|path| path.parent())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let transforms = plan_transforms(spec, smoke.is_some(), pipeline_dir, &wasm_cache).await?;
     let sink = plan_sink(spec).await?;
 
     let capacity = usize::try_from(
@@ -316,7 +322,10 @@ type PlannedTransform = (String, Box<dyn Transform>);
 async fn plan_transforms(
     spec: &PipelineSpec,
     smoke: bool,
+    pipeline_dir: &std::path::Path,
+    wasm_cache: &pramen_wasm::ArtifactCache,
 ) -> Result<Vec<PlannedTransform>, String> {
+    let _ = smoke;
     let mut planned = Vec::with_capacity(spec.spec.transforms.len());
     for transform in &spec.spec.transforms {
         planned.push(match transform {
@@ -326,6 +335,14 @@ async fn plan_transforms(
             ),
             TransformSpec::AiExtract(ai) => plan_semantic("ai.extract", ai, spec, smoke).await?,
             TransformSpec::AiClassify(ai) => plan_semantic("ai.classify", ai, spec, smoke).await?,
+            TransformSpec::Wasm(wasm) => {
+                let component = pramen_wasm::resolve_component_path(pipeline_dir, &wasm.component);
+                let limits = pramen_wasm::InvocationLimits::from_spec(&wasm.limits);
+                let operator =
+                    pramen_wasm::WasmTransform::from_cache(wasm_cache, &component, limits)
+                        .map_err(|error| format!("transform `{}`: {error}", wasm.id))?;
+                (wasm.id.clone(), Box::new(operator) as Box<dyn Transform>)
+            }
         });
     }
     Ok(planned)

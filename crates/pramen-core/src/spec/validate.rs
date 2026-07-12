@@ -101,6 +101,11 @@ fn validate_transforms(spec: &PipelineSpec, push: &mut impl FnMut(&str, String))
             TransformSpec::AiExtract(ai) | TransformSpec::AiClassify(ai) => {
                 validate_ai_transform(spec, ai, &path, push);
             }
+            TransformSpec::Wasm(wasm) => {
+                if wasm.component.trim().is_empty() {
+                    push(&format!("{path}.component"), "must not be empty".to_owned());
+                }
+            }
         }
     }
 }

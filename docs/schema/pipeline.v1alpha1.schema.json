@@ -1,3 +1,60 @@
+   Compiling libc v0.2.186
+   Compiling smallvec v1.15.2
+   Compiling bitflags v2.13.0
+   Compiling anyhow v1.0.103
+   Compiling indexmap v2.14.0
+   Compiling icu_normalizer v2.1.1
+   Compiling tracing-subscriber v0.3.23
+   Compiling jobserver v0.1.35
+   Compiling getrandom v0.3.4
+   Compiling mio v1.2.1
+   Compiling socket2 v0.6.4
+   Compiling ahash v0.8.12
+   Compiling rand_core v0.9.5
+   Compiling core-foundation v0.10.1
+   Compiling cc v1.2.67
+   Compiling arrow-array v56.2.1
+   Compiling idna_adapter v1.2.1
+   Compiling tokio v1.52.3
+   Compiling idna v1.1.0
+   Compiling security-framework-sys v2.17.0
+   Compiling rand_chacha v0.9.0
+   Compiling security-framework v3.7.0
+   Compiling prost-derive v0.14.4
+   Compiling url v2.5.8
+   Compiling cmake v0.1.58
+   Compiling rand v0.9.5
+   Compiling aws-lc-sys v0.42.0
+   Compiling cpufeatures v0.2.17
+   Compiling sha2 v0.10.9
+   Compiling opentelemetry_sdk v0.32.1
+   Compiling serde_yaml_ng v0.10.0
+   Compiling prost v0.14.4
+   Compiling arrow-select v56.2.1
+   Compiling arrow-arith v56.2.1
+   Compiling arrow-row v56.2.1
+   Compiling hyper v1.10.1
+   Compiling tower v0.5.3
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.20
+   Compiling arrow-string v56.2.1
+   Compiling arrow-ord v56.2.1
+   Compiling arrow-cast v56.2.1
+   Compiling opentelemetry-proto v0.32.0
+   Compiling tokio-util v0.7.18
+   Compiling arrow v56.2.1
+   Compiling aws-lc-rs v1.17.1
+   Compiling rustls v0.23.41
+   Compiling rustls-webpki v0.103.13
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.13.4
+   Compiling opentelemetry-http v0.32.0
+   Compiling opentelemetry-otlp v0.32.0
+   Compiling pramen-core v0.1.0 (/Users/akovari/devel/pramen/crates/pramen-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 44.24s
+     Running `target/debug/examples/generate_schema`
 {
   "$defs": {
     "AiBreaker": {
@@ -643,8 +700,80 @@
             "output"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A sandboxed WebAssembly component transform (Arrow IPC in/out).",
+          "properties": {
+            "component": {
+              "description": "Path to a `.wasm` component artifact (absolute or relative to the\npipeline document).",
+              "type": "string"
+            },
+            "id": {
+              "description": "Unique step identifier.",
+              "type": "string"
+            },
+            "limits": {
+              "$ref": "#/$defs/WasmLimitsSpec",
+              "default": {},
+              "description": "Resource limits enforced on every batch invocation."
+            },
+            "type": {
+              "const": "wasm",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "component"
+          ],
+          "type": "object"
         }
       ]
+    },
+    "WasmLimitsSpec": {
+      "additionalProperties": false,
+      "description": "Host-enforced limits for a `type: wasm` transform.",
+      "properties": {
+        "fuel": {
+          "description": "Fuel budget per invocation (`None` = use the runtime default).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxInputMb": {
+          "description": "Maximum Arrow IPC input size in mebibytes.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxOutputMb": {
+          "description": "Maximum Arrow IPC output size in mebibytes.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "memoryMb": {
+          "description": "Maximum guest linear memory in mebibytes.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

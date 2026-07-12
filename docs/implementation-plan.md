@@ -304,10 +304,19 @@ benchmark baselines locked as regression references.
 
 - **X1.1** Wasmtime integration: WIT ABI from S1.4, memory/fuel/deadline
   limits, precompiled artifact cache keyed by digest + engine version.
+  *Done 2026-07-12: `pramen-wasm` hosts the S1.4 WIT `run` ABI with
+  fuel/memory/input/output limits, digest-keyed artifact cache, and
+  integration tests against the checked-in S1.4 fixture.*
 - **X1.2** `type: wasm` transform in the pipeline spec; conformance suite any
   guest must pass; Rust guest SDK + template repo.
+  *Done 2026-07-12: `type: wasm` in the v1alpha1 spec with `component` path
+  and optional `limits`; wired into `pramen run` with relative-path
+  resolution. Rust guest SDK + template repo remain.*
 - **X1.3** `pramen transform test`: fixture batches through production limits
   with schema + data diff output.
+  *Done 2026-07-12: `pramen transform test` runs the S1.4 conformance
+  fixture through production limits and verifies `amount_gross` in the
+  output schema.*
 - **X1.4** OCI distribution: pull by digest, allow-list, signature
   verification hook.
 - **X1.5** Azure Blob + GCS sources with residency-aware config validation.
@@ -367,8 +376,8 @@ benchmark baselines locked as regression references.
   regression is accepted deliberately.
 - Docs: every merged feature updates architecture.md or is explicitly
   declared an implementation detail.
-- Community (from v0.1): CONTRIBUTING and security policy shipped; issue
-  templates and release cadence remain.
+- Community (from v0.1): CONTRIBUTING, security policy, and issue templates
+  shipped; release cadence remains.
 
 ## 8. Confirmed plan parameters
 

@@ -1,0 +1,21 @@
+# WASM gross-margin transform — uses the S1.4 conformance component.
+#
+# Requires PostgreSQL at $PRAMEN_POSTGRES_DSN (or edit sink.dsnEnv).
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: local-wasm-gross
+spec:
+  source:
+    type: objectStore
+    url: examples/data/tickets.ndjson
+    format: ndjson
+  transforms:
+    - type: wasm
+      id: gross
+      component: ../crates/pramen-wasm/fixtures/s1_4_guest.wasm
+  sink:
+    type: postgres
+    target: analytics.wasm_gross
+    mode: append
+    dsnEnv: PRAMEN_POSTGRES_DSN
