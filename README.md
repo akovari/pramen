@@ -141,7 +141,9 @@ Early implementation; no stable public API yet. What runs today:
   submitted as one asynchronous job whose id is durably recorded per item
   before results are awaited, so a crash after submission reconciles on
   restart instead of resubmitting — submitted work is never billed twice;
-  see [examples/local-tickets-ai-classify-batch.yaml](examples/local-tickets-ai-classify-batch.yaml);
+  the `openai-compat` adapter implements the batch surface via the OpenAI
+  Files + Batches APIs (protocol-stub-tested offline); see
+  [examples/local-tickets-ai-classify-batch.yaml](examples/local-tickets-ai-classify-batch.yaml);
 - `pramen ai evaluate` measures model quality, cost, and latency on the
   versioned 520-item golden support-ticket corpus
   ([corpora/](corpora/)), through the same provider adapters pipelines
@@ -171,7 +173,7 @@ Early implementation; no stable public API yet. What runs today:
   PostgreSQL at ~10 CPU-s/GiB, governance fixed cost under 1 ms per
   semantic record ([docs/benchmarks/](docs/benchmarks/)).
 
-The Bedrock/OpenAI batch adapters and the model quality-cost frontier
+The Bedrock batch adapter and the model quality-cost frontier
 table are next on the [Phase 1 workstreams](docs/implementation-plan.md).
 
 Read the [product and architecture direction](docs/architecture.md) for the
@@ -221,8 +223,9 @@ The remaining risk spikes and Phase 1 workstreams, in order (each is
 developed local-first per ADR 0005; cloud spend only confirms, never
 unblocks):
 
-1. the Bedrock/OpenAI batch adapters behind the now-live batch operator
-   (P1.8 remainder), then the S2.1 spike numbers on real Bedrock;
+1. the Bedrock batch adapter behind the now-live batch operator (the
+   P1.8 remainder — the OpenAI batch adapter is live and stub-tested),
+   then the S2.1 spike numbers on real Bedrock;
 2. the model quality-cost frontier table (S2.2 remainder — the corpus
    and `ai evaluate` harness are live; runs against real Bedrock models
    and a local vLLM remain);

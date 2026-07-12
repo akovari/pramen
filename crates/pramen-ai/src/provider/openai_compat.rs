@@ -1,10 +1,21 @@
-//! Adapter for OpenAI-compatible chat-completions endpoints (vLLM, Ollama,
-//! llama.cpp server, and hosted OpenAI-protocol services).
+//! Adapter for OpenAI-compatible endpoints (vLLM, Ollama, llama.cpp
+//! server, and hosted OpenAI-protocol services).
+//!
+//! Online inference uses `POST {endpoint}/chat/completions`. Provider-batch
+//! execution uses the OpenAI Files + Batches APIs (`/files`, `/batches`,
+//! `/files/{id}/content`): items are uploaded as one JSONL file keyed by
+//! `custom_id` (the ledger work key), submitted as a single job, polled,
+//! and fetched. Hosted OpenAI implements these; most self-hosted servers
+//! (Ollama, plain vLLM) do not — using `execution: batch` against one of
+//! those fails with a typed `Server` fault at submission, not silently.
 
-use super::{Capabilities, InferenceRequest, Provider, ProviderResponse, strip_fences};
+use super::{
+    BatchItemResult, BatchStatus, Capabilities, InferenceRequest, Provider, ProviderResponse,
+    strip_fences,
+};
 use crate::error::{AiError, ProviderFault};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::time::Duration;
 
 /// Default per-request deadline. Local models on modest hardware can be
@@ -50,6 +61,34 @@ struct Usage {
     completion_tokens: Option<u64>,
 }
 
+#[derive(Deserialize)]
+struct FileResponse {
+    id: String,
+}
+
+#[derive(Deserialize)]
+struct BatchResponse {
+    id: String,
+    status: String,
+    output_file_id: Option<String>,
+    error_file_id: Option<String>,
+    errors: Option<Value>,
+}
+
+/// One line of a batch output/error file.
+#[derive(Deserialize)]
+struct BatchLine {
+    custom_id: String,
+    response: Option<BatchLineResponse>,
+    error: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct BatchLineResponse {
+    status_code: Option<u16>,
+    body: Option<Value>,
+}
+
 impl OpenAiCompatProvider {
     /// Create an adapter for `endpoint` (e.g. `http://localhost:11434/v1`)
     /// and `model`. `api_key` is optional for local servers.
@@ -91,24 +130,11 @@ impl OpenAiCompatProvider {
             ProviderFault::Transport
         }
     }
-}
 
-#[async_trait::async_trait]
-impl Provider for OpenAiCompatProvider {
-    fn id(&self) -> &str {
-        "openai-compat"
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            online: true,
-            batch: false,
-            structured_output: true,
-            token_accounting: true,
-        }
-    }
-
-    async fn invoke(&self, request: &InferenceRequest) -> Result<ProviderResponse, AiError> {
+    /// The chat-completions request body for one inference request —
+    /// identical for online calls and batch file lines, so both execution
+    /// shapes send byte-for-byte the same prompt.
+    fn chat_body(&self, request: &InferenceRequest) -> Value {
         let system = format!(
             "{}\n\nRespond with exactly one JSON object that conforms to this JSON Schema, \
              with no additional text:\n{}",
@@ -128,20 +154,20 @@ impl Provider for OpenAiCompatProvider {
         {
             map.insert("max_tokens".to_owned(), json!(cap));
         }
+        body
+    }
 
-        let mut http = self
-            .client
-            .post(format!("{}/chat/completions", self.endpoint))
-            .timeout(self.timeout)
-            .json(&body);
-        if let Some(key) = &self.api_key {
-            http = http.bearer_auth(key);
-        }
-        let response = http
-            .send()
-            .await
-            .map_err(|e| self.provider_error(Self::classify(&e), format!("request failed: {e}")))?;
-
+    /// Send a request, classifying transport failures and non-success
+    /// statuses onto typed faults.
+    async fn send(&self, builder: reqwest::RequestBuilder) -> Result<reqwest::Response, AiError> {
+        let builder = match &self.api_key {
+            Some(key) => builder.bearer_auth(key),
+            None => builder,
+        };
+        let response =
+            builder.timeout(self.timeout).send().await.map_err(|e| {
+                self.provider_error(Self::classify(&e), format!("request failed: {e}"))
+            })?;
         let status = response.status();
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             let detail = response.text().await.unwrap_or_default();
@@ -156,13 +182,14 @@ impl Provider for OpenAiCompatProvider {
                 self.provider_error(ProviderFault::Server, format!("HTTP {status}: {detail}"))
             );
         }
-        let parsed: ChatResponse = response.json().await.map_err(|e| {
-            self.provider_error(ProviderFault::Protocol, format!("malformed response: {e}"))
-        })?;
+        Ok(response)
+    }
+
+    /// Turn one chat-completions response body into a [`ProviderResponse`].
+    fn parse_chat(&self, parsed: ChatResponse) -> Result<ProviderResponse, AiError> {
         let choice = parsed.choices.first().ok_or_else(|| {
             self.provider_error(ProviderFault::Protocol, "response contained no choices")
         })?;
-
         Ok(ProviderResponse {
             text: strip_fences(&choice.message.content).to_owned(),
             input_tokens: parsed
@@ -177,6 +204,199 @@ impl Provider for OpenAiCompatProvider {
                 .unwrap_or(0),
             request_id: parsed.id.unwrap_or_default(),
         })
+    }
+
+    /// Download a batch result file and parse its JSONL lines into
+    /// per-item outcomes.
+    async fn fetch_result_file(
+        &self,
+        file_id: &str,
+        results: &mut Vec<BatchItemResult>,
+    ) -> Result<(), AiError> {
+        let content = self
+            .send(
+                self.client
+                    .get(format!("{}/files/{file_id}/content", self.endpoint)),
+            )
+            .await?
+            .text()
+            .await
+            .map_err(|e| {
+                self.provider_error(ProviderFault::Protocol, format!("result file read: {e}"))
+            })?;
+        for line in content.lines().filter(|l| !l.trim().is_empty()) {
+            let parsed: BatchLine = serde_json::from_str(line).map_err(|e| {
+                self.provider_error(
+                    ProviderFault::Protocol,
+                    format!("malformed batch result line: {e}"),
+                )
+            })?;
+            let outcome = match (parsed.response, parsed.error) {
+                (Some(response), None) => {
+                    let ok = response.status_code.is_none_or(|c| (200..300).contains(&c));
+                    match (ok, response.body) {
+                        (true, Some(body)) => serde_json::from_value::<ChatResponse>(body)
+                            .map_err(|e| format!("malformed item body: {e}"))
+                            .and_then(|chat| self.parse_chat(chat).map_err(|e| e.to_string())),
+                        (true, None) => Err("item response had no body".to_owned()),
+                        (false, body) => Err(format!(
+                            "item failed with status {}: {}",
+                            response.status_code.unwrap_or_default(),
+                            body.unwrap_or(Value::Null)
+                        )),
+                    }
+                }
+                (_, Some(error)) => Err(format!("item failed provider-side: {error}")),
+                (None, None) => Err("item had neither response nor error".to_owned()),
+            };
+            results.push((parsed.custom_id, outcome));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl Provider for OpenAiCompatProvider {
+    fn id(&self) -> &str {
+        "openai-compat"
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            online: true,
+            batch: true,
+            structured_output: true,
+            token_accounting: true,
+        }
+    }
+
+    async fn invoke(&self, request: &InferenceRequest) -> Result<ProviderResponse, AiError> {
+        let body = self.chat_body(request);
+        let response = self
+            .send(
+                self.client
+                    .post(format!("{}/chat/completions", self.endpoint))
+                    .json(&body),
+            )
+            .await?;
+        let parsed: ChatResponse = response.json().await.map_err(|e| {
+            self.provider_error(ProviderFault::Protocol, format!("malformed response: {e}"))
+        })?;
+        self.parse_chat(parsed)
+    }
+
+    async fn submit_batch(&self, items: &[(String, InferenceRequest)]) -> Result<String, AiError> {
+        let mut jsonl = String::new();
+        for (key, request) in items {
+            let line = json!({
+                "custom_id": key,
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": self.chat_body(request),
+            });
+            jsonl.push_str(&line.to_string());
+            jsonl.push('\n');
+        }
+
+        let form = reqwest::multipart::Form::new()
+            .text("purpose", "batch")
+            .part(
+                "file",
+                reqwest::multipart::Part::text(jsonl)
+                    .file_name("pramen-batch.jsonl")
+                    .mime_str("application/jsonl")
+                    .map_err(|e| self.provider_error(ProviderFault::Protocol, e))?,
+            );
+        let file: FileResponse = self
+            .send(
+                self.client
+                    .post(format!("{}/files", self.endpoint))
+                    .multipart(form),
+            )
+            .await?
+            .json()
+            .await
+            .map_err(|e| {
+                self.provider_error(
+                    ProviderFault::Protocol,
+                    format!("file upload response: {e}"),
+                )
+            })?;
+
+        let batch: BatchResponse = self
+            .send(
+                self.client
+                    .post(format!("{}/batches", self.endpoint))
+                    .json(&json!({
+                        "input_file_id": file.id,
+                        "endpoint": "/v1/chat/completions",
+                        "completion_window": "24h",
+                    })),
+            )
+            .await?
+            .json()
+            .await
+            .map_err(|e| {
+                self.provider_error(
+                    ProviderFault::Protocol,
+                    format!("batch create response: {e}"),
+                )
+            })?;
+        Ok(batch.id)
+    }
+
+    async fn poll_batch(&self, job_id: &str) -> Result<BatchStatus, AiError> {
+        let batch: BatchResponse = self
+            .send(
+                self.client
+                    .get(format!("{}/batches/{job_id}", self.endpoint)),
+            )
+            .await?
+            .json()
+            .await
+            .map_err(|e| {
+                self.provider_error(ProviderFault::Protocol, format!("batch poll response: {e}"))
+            })?;
+        Ok(match batch.status.as_str() {
+            "validating" | "in_progress" | "finalizing" | "cancelling" => BatchStatus::InProgress,
+            "completed" => BatchStatus::Completed,
+            other => BatchStatus::Failed(format!(
+                "batch ended in state `{other}`: {}",
+                batch.errors.unwrap_or(Value::Null)
+            )),
+        })
+    }
+
+    async fn fetch_batch(&self, job_id: &str) -> Result<Vec<BatchItemResult>, AiError> {
+        let batch: BatchResponse = self
+            .send(
+                self.client
+                    .get(format!("{}/batches/{job_id}", self.endpoint)),
+            )
+            .await?
+            .json()
+            .await
+            .map_err(|e| {
+                self.provider_error(
+                    ProviderFault::Protocol,
+                    format!("batch fetch response: {e}"),
+                )
+            })?;
+
+        let mut results = Vec::new();
+        if let Some(file_id) = &batch.output_file_id {
+            self.fetch_result_file(file_id, &mut results).await?;
+        }
+        if let Some(file_id) = &batch.error_file_id {
+            self.fetch_result_file(file_id, &mut results).await?;
+        }
+        if results.is_empty() {
+            return Err(self.provider_error(
+                ProviderFault::Protocol,
+                format!("batch `{job_id}` exposed no output or error file"),
+            ));
+        }
+        Ok(results)
     }
 }
 

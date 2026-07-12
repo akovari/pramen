@@ -45,7 +45,11 @@ This page is the honest summary.
   recorded per item before results are awaited; a run that crashes after
   submission reconciles on restart by job and item id instead of
   resubmitting — pinned by tests asserting zero re-billing. Exercised
-  end to end against the batch-capable `mock` provider.
+  end to end against the batch-capable `mock` provider. The
+  `openai-compat` adapter implements the batch surface via the OpenAI
+  Files + Batches APIs (upload, submit, poll, JSONL result fetch by
+  work key), protocol-stub-tested offline; live confirmation against
+  hosted OpenAI needs an API key.
 - **Golden-corpus evaluation** (`pramen ai evaluate`): a versioned,
   520-item labelled support-ticket corpus with weighted rubrics, run
   through the same provider adapters as pipelines; reports schema-valid
@@ -88,8 +92,9 @@ This page is the honest summary.
 
 ## In development (Phase 1)
 
-- Bedrock and OpenAI batch adapters (the cloud legs of P1.8; the batch
-  operator, ledger reconciliation, and budgets are already live).
+- The Bedrock batch adapter (the last cloud leg of P1.8; the batch
+  operator, ledger reconciliation, budgets, and the OpenAI batch
+  adapter are already live).
 - The model quality-cost frontier table (S2.2 remainder): the corpus and
   `ai evaluate` harness are live; the pinned model choice per tier needs
   runs against real Bedrock models and a local vLLM.

@@ -126,9 +126,12 @@ in-flight work as `submitted`.
 
 A runnable end-to-end example lives at
 [examples/local-tickets-ai-classify-batch.yaml](https://github.com/akovari/pramen/blob/main/examples/local-tickets-ai-classify-batch.yaml).
-Batch execution requires a batch-capable provider (`mock` today;
-Bedrock and OpenAI batch adapters are the cloud legs of P1.8) — a
-pipeline asking for batch on a provider without it fails at plan time.
+Batch execution requires a batch-capable provider. `mock` implements it
+for offline testing, and `openai-compat` implements it via the OpenAI
+Files + Batches APIs — hosted OpenAI supports these; most self-hosted
+servers (Ollama, plain vLLM) do not and fail submission with a typed
+error rather than silently queuing. The Bedrock batch adapter is the
+remaining cloud leg of P1.8.
 
 ## Inspect the ledger
 

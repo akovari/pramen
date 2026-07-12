@@ -6,8 +6,10 @@
 //! [`ProviderResponse`]. Available adapters: [`MockProvider`] (deterministic,
 //! offline, for tests and pipeline dry-runs; also implements the batch
 //! surface), [`OpenAiCompatProvider`] (vLLM, Ollama, llama.cpp, or any
-//! OpenAI-compatible endpoint), and [`BedrockProvider`] (Amazon Bedrock
-//! Converse; its provider-batch leg is the remainder of P1.8).
+//! OpenAI-compatible endpoint; implements provider-batch via the OpenAI
+//! Files + Batches APIs where the server offers them), and
+//! [`BedrockProvider`] (Amazon Bedrock Converse; its provider-batch leg is
+//! the remainder of P1.8).
 
 mod bedrock;
 mod mock;
