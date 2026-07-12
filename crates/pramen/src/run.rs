@@ -287,12 +287,13 @@ async fn plan_sink(spec: &PipelineSpec) -> Result<Box<dyn Sink>, String> {
     let SinkSpec::Postgres {
         target,
         mode,
+        keys,
         dsn_env,
     } = &spec.spec.sink;
     let dsn = std::env::var(dsn_env).map_err(|_| {
         format!("sink: environment variable `{dsn_env}` with the PostgreSQL DSN is not set")
     })?;
-    let sink = pramen_io::PostgresCopySink::connect(&dsn, target, *mode)
+    let sink = pramen_io::PostgresCopySink::connect(&dsn, target, *mode, keys)
         .await
         .map_err(|error| format!("sink: {error}"))?;
     Ok(Box::new(sink))

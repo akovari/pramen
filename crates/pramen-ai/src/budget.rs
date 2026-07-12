@@ -48,6 +48,7 @@ mod tests {
         AiBudget {
             max_input_tokens_per_record: input,
             max_output_tokens_per_record: output,
+            max_run_tokens: None,
         }
     }
 

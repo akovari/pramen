@@ -98,8 +98,21 @@ The v1 contract is **at-least-once** (ADR 0006): a run that fails after
 partial progress is safe to re-run — nothing was committed, nothing was
 checkpointed. The one duplication window is a crash *between* the sink's
 commit and the checkpoint completion record; with `mode: append` those
-units' rows would repeat on the next run. `mode: upsert` (staging + merge
-on key, in development) closes that window by making replays idempotent.
+units' rows would repeat on the next run. `mode: upsert` closes that
+window: rows are staged in a session-local temporary table and merged
+into the target with `INSERT … ON CONFLICT` on the declared key columns,
+so replays update in place instead of duplicating (the target needs a
+unique index over exactly those columns). Both sides of the contract are
+pinned by tests: a replayed `append` run demonstrably duplicates, the
+same replay under `upsert` demonstrably does not.
 Semantic (`ai.*`) work is exactly-once-billed regardless: duplicated loads
 reuse ledger results. Exactly-once *delivery* from input positions alone
 is never claimed.
+
+```yaml
+sink:
+  type: postgres
+  target: analytics.events
+  mode: upsert
+  keys: [id]
+```

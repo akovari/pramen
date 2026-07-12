@@ -159,6 +159,9 @@ pub struct AiTransform {
     /// Hard per-record token budgets.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget: Option<AiBudget>,
+    /// Error-spike circuit breaker; always armed.
+    #[serde(default)]
+    pub breaker: AiBreaker,
 }
 
 /// Dispatch policy for semantic transforms.
@@ -249,7 +252,7 @@ pub enum InvalidPolicy {
     Review,
 }
 
-/// Hard per-record token budgets for a semantic transform.
+/// Hard token budgets for a semantic transform.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AiBudget {
@@ -259,6 +262,39 @@ pub struct AiBudget {
     /// Maximum output tokens per record.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_output_tokens_per_record: Option<u32>,
+    /// Hard ceiling on total tokens (input + output, provider-reported)
+    /// this transform may consume in one run. Ledger reuse costs nothing
+    /// against it; crossing the ceiling fails the run before dispatching
+    /// further work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_run_tokens: Option<u64>,
+}
+
+/// Error-spike circuit breaker for a semantic transform.
+///
+/// A burst of consecutive invalid outputs almost always means something
+/// systemic — a broken prompt revision, a misconfigured model, a degraded
+/// endpoint — and under `onInvalid: drop`/`review` each one still costs
+/// real tokens. The breaker fails the run instead of paying to discard
+/// the rest of the dataset.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AiBreaker {
+    /// Consecutive invalid-output records that abort the run.
+    #[serde(default = "default_max_consecutive_invalid")]
+    pub max_consecutive_invalid: u32,
+}
+
+impl Default for AiBreaker {
+    fn default() -> Self {
+        Self {
+            max_consecutive_invalid: default_max_consecutive_invalid(),
+        }
+    }
+}
+
+fn default_max_consecutive_invalid() -> u32 {
+    25
 }
 
 /// Record sinks.
@@ -273,6 +309,10 @@ pub enum SinkSpec {
         /// Load semantics.
         #[serde(default)]
         mode: SinkMode,
+        /// Merge-key columns for `upsert` mode; the target needs a unique
+        /// index over exactly these columns. Must be empty for `append`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        keys: Vec<String>,
         /// Environment variable holding the connection string.
         ///
         /// Connection strings are secrets and never appear in the document.

@@ -38,6 +38,11 @@ pub struct SemanticTransform {
     ledger: Ledger,
     output_schema: Value,
     dropped_invalid: u64,
+    /// Provider-reported tokens (input + output) consumed this run,
+    /// checked against `budget.maxRunTokens`. Ledger reuse adds nothing.
+    run_tokens: u64,
+    /// Consecutive invalid-output records; trips the circuit breaker.
+    consecutive_invalid: u32,
 }
 
 impl SemanticTransform {
@@ -80,7 +85,15 @@ impl SemanticTransform {
             ledger,
             output_schema,
             dropped_invalid: 0,
+            run_tokens: 0,
+            consecutive_invalid: 0,
         })
+    }
+
+    /// Provider-reported tokens (input + output) consumed so far this run.
+    #[must_use]
+    pub fn run_tokens(&self) -> u64 {
+        self.run_tokens
     }
 
     fn stage_error(&self, error: &AiError) -> StageError {
@@ -134,6 +147,26 @@ impl SemanticTransform {
             return self.apply_invalid_policy(&key, &error.to_string());
         }
 
+        // Run ceiling: before spending anything more, project this
+        // request's worst case (estimated input + configured output cap)
+        // onto the tokens already consumed. Crossing the ceiling is a hard
+        // stop, not a per-record policy matter.
+        if let Some(ceiling) = self.config.budget.as_ref().and_then(|b| b.max_run_tokens) {
+            let projected = self.run_tokens
+                + u64::from(budget::estimate_tokens(&request_text))
+                + u64::from(budget::output_cap(self.config.budget.as_ref()).unwrap_or(0));
+            if projected > ceiling {
+                return Err(StageError::InvalidData(format!(
+                    "{}: run token ceiling reached: {} tokens consumed, next record needs \
+                     up to {} more, maxRunTokens is {ceiling}; raise the ceiling or narrow \
+                     the input (already-completed records are in the ledger and stay free)",
+                    self.config.id,
+                    self.run_tokens,
+                    projected - self.run_tokens,
+                )));
+            }
+        }
+
         self.ledger
             .mark_submitted(&key, "online")
             .map_err(|e| self.stage_error(&e))?;
@@ -146,9 +179,11 @@ impl SemanticTransform {
                 return Err(self.stage_error(&error));
             }
         };
+        self.run_tokens += response.input_tokens + response.output_tokens;
 
         match validate_output(&response.text, &self.config.output.fields) {
             Ok(normalized) => {
+                self.consecutive_invalid = 0;
                 self.record_completion(&key, &response, &normalized)?;
                 Ok(Some(normalized))
             }
@@ -156,6 +191,16 @@ impl SemanticTransform {
                 self.ledger
                     .mark_failed(&key, &format!("invalid output: {violation}"))
                     .map_err(|e| self.stage_error(&e))?;
+                self.consecutive_invalid += 1;
+                let trip_at = self.config.breaker.max_consecutive_invalid;
+                if self.consecutive_invalid >= trip_at {
+                    return Err(StageError::InvalidData(format!(
+                        "{}: circuit breaker tripped: {trip_at} consecutive invalid outputs \
+                         (last: {violation}); this looks systemic — check the instruction, \
+                         model, and endpoint before re-running",
+                        self.config.id,
+                    )));
+                }
                 self.apply_invalid_policy(&key, &violation)
             }
         }
@@ -394,8 +439,37 @@ impl Transform for SemanticTransform {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::MockProvider;
-    use pramen_core::spec::{AiOutput, AiValidation, FieldSpec};
+    use crate::provider::{Capabilities, MockProvider};
+    use pramen_core::spec::{AiBreaker, AiOutput, AiValidation, FieldSpec};
+
+    /// A provider whose output never validates — for breaker tests.
+    struct GarbageProvider {
+        calls: std::sync::atomic::AtomicU64,
+    }
+
+    #[async_trait::async_trait]
+    impl Provider for GarbageProvider {
+        fn id(&self) -> &str {
+            "garbage"
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                online: true,
+                batch: false,
+                structured_output: false,
+                token_accounting: true,
+            }
+        }
+        async fn invoke(&self, _request: &InferenceRequest) -> Result<ProviderResponse, AiError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(ProviderResponse {
+                text: "{\"wrong\": true}".to_owned(),
+                input_tokens: 10,
+                output_tokens: 5,
+                request_id: "garbage".to_owned(),
+            })
+        }
+    }
 
     fn config(on_invalid: InvalidPolicy) -> AiTransform {
         AiTransform {
@@ -420,6 +494,7 @@ mod tests {
             },
             validation: AiValidation { on_invalid },
             budget: None,
+            breaker: AiBreaker::default(),
         }
     }
 
@@ -498,6 +573,7 @@ mod tests {
         cfg.budget = Some(pramen_core::spec::AiBudget {
             max_input_tokens_per_record: Some(1),
             max_output_tokens_per_record: None,
+            max_run_tokens: None,
         });
         let mut transform = SemanticTransform::new(
             "ai.extract",
@@ -514,6 +590,96 @@ mod tests {
             .unwrap();
         assert_eq!(out[0].num_rows(), 0, "over-budget record dropped");
         assert_eq!(provider.calls(), 0, "nothing dispatched");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn run_token_ceiling_stops_dispatch_but_reuse_stays_free() {
+        let ledger_path = std::env::temp_dir().join(format!(
+            "pramen-operator-test-{}-ceiling.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&ledger_path);
+        let provider = Arc::new(MockProvider::new());
+
+        // First: no ceiling; record 1 dispatches and costs a measurable
+        // number of tokens.
+        let mut unlimited = SemanticTransform::new(
+            "ai.classify",
+            config(InvalidPolicy::Fail),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&ledger_path).unwrap(),
+        )
+        .unwrap();
+        unlimited.apply(batch(&["printer on fire"])).await.unwrap();
+        let first_cost = unlimited.run_tokens();
+        assert!(first_cost > 0);
+        assert_eq!(provider.calls(), 1);
+
+        // Second: a ceiling barely above record 1's cost, same ledger.
+        // Record 1 replays for free (reuse precedes the ceiling check);
+        // record 2 would blow the ceiling and is stopped before dispatch.
+        let mut cfg = config(InvalidPolicy::Fail);
+        cfg.budget = Some(pramen_core::spec::AiBudget {
+            max_input_tokens_per_record: None,
+            max_output_tokens_per_record: None,
+            max_run_tokens: Some(first_cost + 1),
+        });
+        let mut capped = SemanticTransform::new(
+            "ai.classify",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&ledger_path).unwrap(),
+        )
+        .unwrap();
+        let out = capped.apply(batch(&["printer on fire"])).await.unwrap();
+        assert_eq!(
+            out[0].num_rows(),
+            1,
+            "reused record passes under the ceiling"
+        );
+        assert_eq!(provider.calls(), 1, "no new dispatch for the reused record");
+
+        let error = capped
+            .apply(batch(&["a brand new never-seen ticket"]))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("run token ceiling"), "{error}");
+        assert_eq!(provider.calls(), 1, "new record blocked before dispatch");
+        let _ = std::fs::remove_file(ledger_path);
+    }
+
+    #[tokio::test]
+    async fn breaker_trips_on_consecutive_invalid_outputs() {
+        let (path, ledger) = temp_ledger("breaker");
+        let provider = Arc::new(GarbageProvider {
+            calls: std::sync::atomic::AtomicU64::new(0),
+        });
+        let mut cfg = config(InvalidPolicy::Drop);
+        cfg.breaker = AiBreaker {
+            max_consecutive_invalid: 3,
+        };
+        let mut transform = SemanticTransform::new(
+            "ai.classify",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+
+        let error = transform
+            .apply(batch(&["a", "b", "c", "d", "e"]))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("circuit breaker"), "{error}");
+        assert_eq!(
+            provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+            3,
+            "the run stops at the trip threshold instead of paying for the rest"
+        );
         let _ = std::fs::remove_file(path);
     }
 

@@ -49,10 +49,14 @@ spec:
       budget:
         maxInputTokensPerRecord: 4096
         maxOutputTokensPerRecord: 256
+        maxRunTokens: 2000000          # hard per-run ceiling; reuse is free
+      breaker:
+        maxConsecutiveInvalid: 25      # error-spike circuit breaker (default)
   sink:
     type: postgres
     target: analytics.events           # qualified schema.table
-    mode: append                       # append | upsert
+    mode: upsert                       # append | upsert
+    keys: [id]                         # merge keys (upsert only)
     dsnEnv: PRAMEN_POSTGRES_DSN        # env var holding the connection string
   runtime:
     targetBatchBytes: 8388608

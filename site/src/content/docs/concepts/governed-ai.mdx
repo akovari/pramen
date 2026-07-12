@@ -79,11 +79,23 @@ The consequences fall out naturally:
 Ledger overhead was measured at microseconds per work item — noise next to
 any model call.
 
-## Budgets and validation
+## Budgets, ceilings, and the circuit breaker
 
-- **Budgets are enforced before dispatch**, not reported after: per-record
-  input/output token ceilings, and (coming with the operators) per-run cost
-  ceilings and circuit breakers on error and invalid-output spikes.
+- **Budgets are enforced before dispatch**, not reported after.
+  Per-record: `maxInputTokensPerRecord` gates each record on a
+  conservative estimate; `maxOutputTokensPerRecord` becomes the
+  provider-side generation cap.
+- **`maxRunTokens` is a hard per-run ceiling** on provider-reported
+  tokens for the transform. Before each dispatch, the tokens already
+  consumed plus the next request's worst case are projected against it;
+  crossing it fails the run with a clear message. Ledger reuse costs
+  nothing against the ceiling, so a re-run of mostly-cached data proceeds
+  even under a tight cap.
+- **The circuit breaker is always armed**: a run aborts after
+  `breaker.maxConsecutiveInvalid` consecutive invalid outputs (default
+  25). A spike like that is almost always systemic — a broken prompt
+  revision, wrong model, degraded endpoint — and under `onInvalid: drop`
+  each invalid record still costs real tokens.
 - **Output is validated against the declared schema** — types,
   nullability — and lands as properly typed Arrow columns, not a JSON
   string you parse downstream. Invalid output follows an explicit policy:

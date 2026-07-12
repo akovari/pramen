@@ -1,8 +1,22 @@
 {
   "$defs": {
+    "AiBreaker": {
+      "additionalProperties": false,
+      "description": "Error-spike circuit breaker for a semantic transform.\n\nA burst of consecutive invalid outputs almost always means something\nsystemic — a broken prompt revision, a misconfigured model, a degraded\nendpoint — and under `onInvalid: drop`/`review` each one still costs\nreal tokens. The breaker fails the run instead of paying to discard\nthe rest of the dataset.",
+      "properties": {
+        "maxConsecutiveInvalid": {
+          "default": 25,
+          "description": "Consecutive invalid-output records that abort the run.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "AiBudget": {
       "additionalProperties": false,
-      "description": "Hard per-record token budgets for a semantic transform.",
+      "description": "Hard token budgets for a semantic transform.",
       "properties": {
         "maxInputTokensPerRecord": {
           "description": "Maximum input tokens per record.",
@@ -16,6 +30,15 @@
         "maxOutputTokensPerRecord": {
           "description": "Maximum output tokens per record.",
           "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxRunTokens": {
+          "description": "Hard ceiling on total tokens (input + output, provider-reported)\nthis transform may consume in one run. Ledger reuse costs nothing\nagainst it; crossing the ceiling fails the run before dispatching\nfurther work.",
+          "format": "uint64",
           "minimum": 0,
           "type": [
             "integer",
@@ -362,6 +385,13 @@
               "description": "Environment variable holding the connection string.\n\nConnection strings are secrets and never appear in the document.",
               "type": "string"
             },
+            "keys": {
+              "description": "Merge-key columns for `upsert` mode; the target needs a unique\nindex over exactly these columns. Must be empty for `append`.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "mode": {
               "$ref": "#/$defs/SinkMode",
               "default": "append",
@@ -444,6 +474,13 @@
           "additionalProperties": false,
           "description": "Governed semantic extraction into typed columns.",
           "properties": {
+            "breaker": {
+              "$ref": "#/$defs/AiBreaker",
+              "default": {
+                "maxConsecutiveInvalid": 25
+              },
+              "description": "Error-spike circuit breaker; always armed."
+            },
             "budget": {
               "anyOf": [
                 {
@@ -509,6 +546,13 @@
           "additionalProperties": false,
           "description": "Governed semantic classification into typed columns.",
           "properties": {
+            "breaker": {
+              "$ref": "#/$defs/AiBreaker",
+              "default": {
+                "maxConsecutiveInvalid": 25
+              },
+              "description": "Error-spike circuit breaker; always armed."
+            },
             "budget": {
               "anyOf": [
                 {

@@ -53,20 +53,20 @@ Ordered list; may be empty. Every entry needs a unique `id`.
 
 ### `type: ai.extract` / `type: ai.classify`
 
-Validated today; execution ships with the AI workstream.
-
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | string | Unique step id |
 | `model` | string | Must reference a key in `spec.models` |
-| `execution` | string | `auto` *(default)*, `online`, or `batch` |
+| `execution` | string | `auto` *(default)*, `online`, or `batch` (batch execution is P1.8) |
 | `inputs` | string[] | Input column names (at least one) |
 | `instruction` | string | The fixed instruction; part of the work key |
 | `output.fields[]` | object[] | `{ name, type, nullable }`; at least one, unique names |
 | `output.fields[].type` | string | `utf8`, `int64`, `float64`, `bool`, `timestamp` |
 | `validation.onInvalid` | string | `fail` *(default)*, `drop`, or `review` |
-| `budget.maxInputTokensPerRecord` | int? | Positive |
-| `budget.maxOutputTokensPerRecord` | int? | Positive |
+| `budget.maxInputTokensPerRecord` | int? | Positive; per-record pre-dispatch gate |
+| `budget.maxOutputTokensPerRecord` | int? | Positive; provider-side cap |
+| `budget.maxRunTokens` | int? | Positive; hard per-run ceiling on provider-reported tokens — ledger reuse is free |
+| `breaker.maxConsecutiveInvalid` | int | Consecutive invalid outputs that abort the run; default 25, always armed |
 
 ## `spec.sink`
 
@@ -74,7 +74,8 @@ Validated today; execution ships with the AI workstream.
 | --- | --- | --- |
 | `type` | string | `postgres` |
 | `target` | string | Qualified `schema.table` |
-| `mode` | string | `append` *(default)*; `upsert` planned |
+| `mode` | string | `append` *(default)* or `upsert` (stage + merge on `keys`) |
+| `keys` | string[] | Merge-key columns; required (non-empty, unique) for `upsert`, forbidden for `append`; the target needs a unique index over exactly these columns |
 | `dsnEnv` | string | Env var holding the connection string; default `PRAMEN_POSTGRES_DSN` |
 
 ## `spec.runtime`

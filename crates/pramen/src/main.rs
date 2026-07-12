@@ -220,9 +220,17 @@ fn explain(spec: &PipelineSpec) {
     let SinkSpec::Postgres {
         target,
         mode,
+        keys,
         dsn_env,
     } = &spec.spec.sink;
-    println!("  sink: postgres {target} (mode {mode:?}, dsn from ${dsn_env})");
+    if keys.is_empty() {
+        println!("  sink: postgres {target} (mode {mode:?}, dsn from ${dsn_env})");
+    } else {
+        println!(
+            "  sink: postgres {target} (mode {mode:?} on [{}], dsn from ${dsn_env})",
+            keys.join(", ")
+        );
+    }
 
     let runtime = &spec.spec.runtime;
     println!(

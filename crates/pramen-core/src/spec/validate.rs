@@ -4,7 +4,7 @@
 //! offending element, so a user fixes a document in one round trip.
 
 use super::error::ValidationIssue;
-use super::types::{AiTransform, PipelineSpec, SinkSpec, SourceSpec, TransformSpec};
+use super::types::{AiTransform, PipelineSpec, SinkMode, SinkSpec, SourceSpec, TransformSpec};
 use std::collections::BTreeSet;
 
 pub(super) fn validate(spec: &PipelineSpec) -> Vec<ValidationIssue> {
@@ -148,13 +148,28 @@ fn validate_ai_transform(
                 "must be positive".to_owned(),
             );
         }
+        if budget.max_run_tokens == Some(0) {
+            push(
+                &format!("{path}.budget.maxRunTokens"),
+                "must be positive".to_owned(),
+            );
+        }
+    }
+    if ai.breaker.max_consecutive_invalid == 0 {
+        push(
+            &format!("{path}.breaker.maxConsecutiveInvalid"),
+            "must be positive (the breaker is always armed)".to_owned(),
+        );
     }
 }
 
 fn validate_sink(sink: &SinkSpec, push: &mut impl FnMut(&str, String)) {
     match sink {
         SinkSpec::Postgres {
-            target, dsn_env, ..
+            target,
+            mode,
+            keys,
+            dsn_env,
         } => {
             let parts: Vec<&str> = target.split('.').collect();
             if parts.len() != 2 || parts.iter().any(|p| p.trim().is_empty()) {
@@ -165,6 +180,25 @@ fn validate_sink(sink: &SinkSpec, push: &mut impl FnMut(&str, String)) {
             }
             if dsn_env.trim().is_empty() {
                 push("spec.sink.dsnEnv", "must not be empty".to_owned());
+            }
+            match mode {
+                SinkMode::Upsert if keys.is_empty() => push(
+                    "spec.sink.keys",
+                    "mode `upsert` requires at least one merge-key column".to_owned(),
+                ),
+                SinkMode::Append if !keys.is_empty() => push(
+                    "spec.sink.keys",
+                    "only meaningful with mode `upsert`".to_owned(),
+                ),
+                _ => {}
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            for key in keys {
+                if key.trim().is_empty() {
+                    push("spec.sink.keys", "key columns must not be empty".to_owned());
+                } else if !seen.insert(key) {
+                    push("spec.sink.keys", format!("duplicate key column `{key}`"));
+                }
             }
         }
     }

@@ -122,6 +122,12 @@ Early implementation; no stable public API yet. What runs today:
 - checkpointed incremental runs (ADR 0006): file-granular work units on a
   crash-safe append-only store — replaying a finished run loads nothing, a
   grown directory loads only new files;
+- `upsert` sink mode: stage + `ON CONFLICT` merge on declared keys, so
+  replays are idempotent — the at-least-once contract is pinned by tests
+  on both sides (append duplicates, upsert does not);
+- run-level cost governance: `maxRunTokens` hard ceilings (ledger reuse
+  stays free) and an always-armed circuit breaker against invalid-output
+  spikes;
 - governed semantic transforms run today: `ai.extract` / `ai.classify` on
   the durable SQLite (WAL) inference ledger — content-addressed work keys,
   result reuse on replay, pre-dispatch token budgets, and strict typed
@@ -191,8 +197,9 @@ unblocks):
    local fake batch service, then the S2.1 spike numbers on real Bedrock;
 2. the golden evaluation corpus and model quality-cost frontier (S2.2),
    against local models first;
-3. upsert sink mode (P1.4) and at-least-once delivery tests (P1.14);
-4. per-run cost ceilings and circuit breakers (P1.11 remainder);
+3. `run --smoke`, `ai evaluate`, and the measured ten-minute quickstart
+   (P1.16–P1.18);
+4. fault-injection and benchmark suites (P1.19–P1.20);
 5. the WASM WIT component round-trip spike, gating the extensibility
    milestone, not v1 (S1.4).
 

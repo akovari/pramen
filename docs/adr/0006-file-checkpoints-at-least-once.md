@@ -51,12 +51,17 @@ at most one torn (and detectable) record.
 The crash window is between sink commit (step 4) and completion marking
 (step 5): a crash exactly there re-loads those units on the next run. With
 `mode: append` this duplicates rows; that is the documented at-least-once
-contract. Mitigations, in order of arrival:
+contract. Mitigations:
 
-- `mode: upsert` (P1.4 remainder) makes replays idempotent on the target
-  key;
+- `mode: upsert` (P1.4) makes replays idempotent on the declared merge
+  keys — staged in a session-local temp table, merged with
+  `INSERT … ON CONFLICT`, last write wins deterministically within a run;
 - semantic (`ai.*`) work is *already* exactly-once-billed regardless, via
   the inference ledger — duplicated loads reuse recorded results.
+
+Both sides are pinned by L2 tests (`delivery_contract_append_duplicates_
+upsert_does_not`) and verified end to end, including the simulated
+commit-then-crash window with an upsert sink (exact row counts on replay).
 
 Never claimed: exactly-once delivery from checkpointing input positions
 alone (architecture §10 explicitly rejects that claim).

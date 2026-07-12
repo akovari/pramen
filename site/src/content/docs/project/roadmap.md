@@ -20,6 +20,14 @@ This page is the honest summary.
 - **Checkpointed incremental runs**: file-granular work units on a
   crash-safe append-only store; replaying a finished run loads nothing,
   a grown directory loads only new files (ADR 0006).
+- **Upsert sink mode**: stage + `ON CONFLICT` merge on declared keys;
+  replays are idempotent, within-run duplicates collapse
+  deterministically (last write wins). The at-least-once contract is
+  pinned by tests on both sides: append duplicates on replay, upsert
+  does not.
+- **Run-level cost governance**: `maxRunTokens` hard ceiling (checked
+  before each dispatch, ledger reuse free) and an always-armed
+  circuit breaker that aborts after N consecutive invalid outputs.
 - **Governed semantic transforms**: `ai.extract` / `ai.classify` on the
   production SQLite (WAL) inference ledger — content-addressed work keys,
   durable result reuse on replay, pre-dispatch input token budgets,
@@ -44,9 +52,7 @@ This page is the honest summary.
 
 - Provider-batch execution with restart reconciliation (P1.8), developed
   against a local fake batch service before any cloud spend.
-- Upsert sink mode (P1.4); remote work-unit enumeration for checkpointed
-  `s3://` sources (P1.1 remainder).
-- Per-run cost ceilings and error-spike circuit breakers (P1.11
+- Remote work-unit enumeration for checkpointed `s3://` sources (P1.1
   remainder); review-queue routing (X1.6).
 - The golden evaluation corpus and quality-cost frontier (S2.2), runnable
   against local models first.

@@ -62,6 +62,7 @@ spec:
       budget:
         maxInputTokensPerRecord: 2048
         maxOutputTokensPerRecord: 256
+        maxRunTokens: 500000     # hard stop for the whole run; reuse is free
   sink:
     type: postgres
     target: analytics.tickets_classified
@@ -82,6 +83,13 @@ models:
 - **Budgets bite before dispatch.** A record whose input exceeds the
   configured token ceiling is rejected up front — not billed and then
   complained about. Output caps are passed to the provider as hard limits.
+  `maxRunTokens` bounds the whole run: crossing it fails fast with the
+  consumed count, and everything already completed stays in the ledger,
+  so the re-run picks up where the money ran out.
+- **A circuit breaker is always armed.** Twenty-five consecutive invalid
+  outputs (configurable via `breaker.maxConsecutiveInvalid`) abort the
+  run — a spike like that means a systemic problem, and burning budget to
+  drop the rest of the dataset helps nobody.
 - **Every completed inference is durable.** Each validated result is
   recorded in the SQLite (WAL) ledger *before* it is used. Kill the run at
   any point and restart: finished records are reused at zero cost.
