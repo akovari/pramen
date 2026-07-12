@@ -2,9 +2,9 @@
 
 Status: in execution  
 Companion to: [architecture.md](architecture.md)  
-Last reviewed: 2026-07-11
+Last reviewed: 2026-07-12
 
-## Status snapshot (2026-07-11)
+## Status snapshot (2026-07-12)
 
 Authoritative per-task state lives in the mirrored GitHub issues; this
 snapshot orients a reader without leaving the file.
