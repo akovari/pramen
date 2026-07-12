@@ -57,6 +57,10 @@ run = "./scripts/perf-gate.sh"
 description = "P2.2 gate: release binary + measured quickstart"
 run = "./scripts/release-quickstart.sh"
 
+[tasks.clean]
+description = "Remove Rust build artifacts (frees target/ disk space)"
+run = "rm -rf target spikes/*/target"
+
 [tasks.ci]
 description = "The full local gate; identical checks run in GitHub Actions"
 depends = ["lint", "deny", "test", "docs"]

@@ -1,10 +1,10 @@
 ---
 title: CLI reference
-description: The pramen command surface — validate, explain, run, ai.
+description: The pramen command surface — validate, explain, run, transform, ai.
 ---
 
-The v1 CLI has four commands. Global flags come before or after the
-subcommand.
+The v1 CLI has five top-level command groups. Global flags come before or
+after the subcommand.
 
 ## Global flags
 
@@ -42,7 +42,8 @@ pipeline: governed-semantic-enrichment
 ## `pramen run <file>`
 
 Validate, plan, and execute the pipeline. Parquet and NDJSON sources
-(local or `s3://`), SQL transforms, governed `ai.extract`/`ai.classify`
+(local or `s3://`), SQL transforms, sandboxed `type: wasm` component
+transforms (Arrow IPC in/out via Wasmtime), governed `ai.extract`/`ai.classify`
 steps (providers `mock`, `openai-compat`, `bedrock`; online or
 provider-batch execution with crash reconciliation), checkpointed
 incremental runs, and the Postgres sink in `append` or `upsert` mode run
@@ -187,3 +188,25 @@ Subcommands (all take `--ledger <path>`, defaulting like `ai status`):
 
 Unique key prefixes are accepted; ambiguous ones are refused so a
 decision can never land on the wrong record.
+
+## `pramen transform test`
+
+Run a WebAssembly component through production resource limits against the
+S1.4 conformance fixture (synthetic `id` / `amount` / `note` batch). Verifies
+the output schema includes the expected derived column — offline, zero cost.
+
+```console
+$ pramen transform test
+OK: component `.../fixtures/s1_4_guest.wasm` transformed 8192 row(s); output has `amount_gross`
+
+$ pramen transform test --component ./my_transform.wasm --rows 1024
+```
+
+Flags:
+
+- `--component <path>` — `.wasm` artifact (defaults to the checked-in S1.4
+  fixture in `crates/pramen-wasm/fixtures/`)
+- `--rows <n>` — fixture batch size (default 8192)
+
+Build your own guest from [`templates/wasm-transform-rust`](https://github.com/akovari/pramen/tree/main/templates/wasm-transform-rust),
+then point a pipeline's `type: wasm` step at the artifact.

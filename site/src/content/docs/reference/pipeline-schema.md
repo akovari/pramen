@@ -71,6 +71,21 @@ Ordered list; may be empty. Every entry needs a unique `id`.
 | `budget.maxRunTokens` | int? | Positive; hard per-run ceiling on provider-reported tokens — ledger reuse is free |
 | `breaker.maxConsecutiveInvalid` | int | Consecutive invalid outputs that abort the run; default 25, always armed |
 
+### `type: wasm`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | string | Unique step id |
+| `component` | string | Path to a WebAssembly component (`.wasm`); absolute or relative to the pipeline file |
+| `limits.memoryMb` | int? | Guest linear memory ceiling in mebibytes; default 256 |
+| `limits.fuel` | int? | Wasmtime fuel budget per batch; default 10_000_000_000 |
+| `limits.maxInputMb` | int? | Maximum Arrow IPC input size in mebibytes; default 64 |
+| `limits.maxOutputMb` | int? | Maximum Arrow IPC output size in mebibytes; default 64 |
+
+The guest implements the WIT ABI in `crates/pramen-wasm/wit/transform.wit`:
+Arrow IPC bytes in, Arrow IPC bytes out. Build a guest from
+`templates/wasm-transform-rust/` and validate with `pramen transform test`.
+
 ## `spec.sink`
 
 | Field | Type | Notes |

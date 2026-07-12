@@ -35,6 +35,8 @@ Everything runs through mise; CI runs the same tasks.
   CI bound of designated benches)
 - `mise run release-quickstart` — P2.2 gate: release binary + measured
   quickstart (`scripts/release-quickstart.sh`; needs `PRAMEN_POSTGRES_DSN`)
+- `mise run clean` — delete `target/` and spike build dirs when disk is tight
+- `pramen transform test` — offline WASM component conformance (X1.3)
 
 ## Code standards
 

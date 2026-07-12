@@ -1,0 +1,7 @@
+package pramen:transform@0.1.0;
+
+/// Pramen WASM transform ABI: Arrow IPC stream bytes in, Arrow IPC stream
+/// bytes out. Schema negotiation and limits are host-side.
+world transform {
+    export run: func(batch: list<u8>) -> result<list<u8>, string>;
+}
