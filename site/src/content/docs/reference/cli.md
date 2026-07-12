@@ -83,6 +83,19 @@ $ pramen run --smoke examples/local-tickets-ai-classify.yaml
 smoke run complete: 100 rows in / 100 rows out in 137.05ms
 ```
 
+### `--otlp-endpoint <url>`
+
+Push the final run metrics (rows/batches/bytes in and out, run duration,
+attributed with the pipeline name) to an OTLP collector over
+HTTP/protobuf when the run completes. `<url>` is the collector base URL,
+e.g. `http://localhost:4318`; also settable via `PRAMEN_OTLP_ENDPOINT`.
+An unreachable collector is a warning, never a run failure.
+
+For log collection, `--log-format json` emits one JSON object per line
+on stderr with a pinned envelope (`timestamp`, `level`, `target`,
+`message`, plus each event's own flattened fields) — the key set is
+snapshot-tested, so it will not drift silently.
+
 ## `pramen ai status [--ledger <path>]`
 
 Show the inference ledger's work-item counts by state (pending, submitted,

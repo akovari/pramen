@@ -78,6 +78,10 @@ enum Command {
         /// Row cap for --smoke.
         #[arg(long, default_value_t = 100, requires = "smoke")]
         smoke_rows: usize,
+        /// OTLP collector base URL (e.g. http://localhost:4318); the final
+        /// run metrics are pushed there over HTTP/protobuf.
+        #[arg(long, env = "PRAMEN_OTLP_ENDPOINT")]
+        otlp_endpoint: Option<String>,
     },
     /// AI governance utilities.
     Ai {
@@ -196,10 +200,11 @@ fn main() -> ExitCode {
             file,
             smoke,
             smoke_rows,
+            otlp_endpoint,
         } => match load(&file) {
             Ok(spec) => {
                 let smoke = smoke.then_some(run::SmokeOptions { rows: smoke_rows });
-                match run::execute(&spec, smoke) {
+                match run::execute(&spec, smoke, otlp_endpoint.as_deref()) {
                     Ok(()) => ExitCode::SUCCESS,
                     Err(message) => {
                         eprintln!("pramen: run failed: {message}");

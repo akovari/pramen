@@ -54,16 +54,45 @@ impl Default for SmokeOptions {
 /// (a partial run must never mark work units complete). Rows still land
 /// in the real sink under the same transactional contract.
 ///
+/// With `otlp_endpoint` set, the final run metrics are pushed to that
+/// OTLP collector (HTTP/protobuf) after the run completes; export
+/// problems are reported as warnings, never as run failures.
+///
 /// # Errors
 ///
 /// Returns a human-readable message when planning or execution fails.
-pub fn execute(spec: &PipelineSpec, smoke: Option<SmokeOptions>) -> Result<(), String> {
+pub fn execute(
+    spec: &PipelineSpec,
+    smoke: Option<SmokeOptions>,
+    otlp_endpoint: Option<&str>,
+) -> Result<(), String> {
     let tokio_runtime = tokio::runtime::Runtime::new()
         .map_err(|error| format!("failed to start async runtime: {error}"))?;
-    tokio_runtime.block_on(execute_async(spec, smoke))
+    let outcome = tokio_runtime.block_on(execute_async(spec, smoke))?;
+    // The exporter uses a blocking HTTP client, so it runs after (not
+    // inside) the async runtime.
+    if let (Some(endpoint), Some((snapshot, seconds))) = (otlp_endpoint, outcome) {
+        match pramen_core::observe::export_metrics_otlp(
+            endpoint,
+            &spec.metadata.name,
+            &snapshot,
+            seconds,
+        ) {
+            Ok(()) => tracing::info!(endpoint, "run metrics exported via OTLP"),
+            Err(error) => tracing::warn!(endpoint, %error, "OTLP metrics export failed"),
+        }
+    }
+    Ok(())
 }
 
-async fn execute_async(spec: &PipelineSpec, smoke: Option<SmokeOptions>) -> Result<(), String> {
+/// The run's final metrics and duration, or `None` when there was
+/// nothing to do.
+type RunOutcome = Option<(pramen_core::observe::MetricsSnapshot, f64)>;
+
+async fn execute_async(
+    spec: &PipelineSpec,
+    smoke: Option<SmokeOptions>,
+) -> Result<RunOutcome, String> {
     let started = Instant::now();
     let runtime_spec = &spec.spec.runtime;
     let run_id = format!(
@@ -103,7 +132,7 @@ async fn execute_async(spec: &PipelineSpec, smoke: Option<SmokeOptions>) -> Resu
                     "nothing to do: all {total} work unit(s) under the source are already \
                      completed in the checkpoint store"
                 );
-                return Ok(());
+                return Ok(None);
             }
             tracing::info!(
                 total_units = total,
@@ -194,7 +223,7 @@ async fn execute_async(spec: &PipelineSpec, smoke: Option<SmokeOptions>) -> Resu
         m.batches_out,
         m.bytes_out as f64 / 1_048_576.0,
     );
-    Ok(())
+    Ok(Some((m, elapsed.as_secs_f64())))
 }
 
 /// Caps a source at a fixed number of rows for smoke runs, slicing the

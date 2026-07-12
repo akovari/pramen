@@ -55,10 +55,89 @@ pub fn init_logging(format: LogFormat) -> Result<(), Box<dyn std::error::Error +
         .with_writer(std::io::stderr);
     match format {
         LogFormat::Pretty => builder.try_init()?,
-        LogFormat::Json => builder.json().flatten_event(true).try_init()?,
+        LogFormat::Json => builder
+            .json()
+            .flatten_event(true)
+            .with_current_span(false)
+            .with_span_list(false)
+            .try_init()?,
         LogFormat::Silent => {}
     }
     Ok(())
+}
+
+/// The envelope fields every `--log-format json` event line carries, in
+/// addition to the event's own flattened fields.
+///
+/// This is the contract collectors may rely on; the schema test pins it,
+/// and changing it is a breaking change to the JSON log format.
+pub const JSON_EVENT_ENVELOPE: [&str; 4] = ["timestamp", "level", "target", "message"];
+
+/// Push one run's final metrics to an OTLP collector over HTTP/protobuf
+/// (`endpoint` is the collector base URL, e.g. `http://localhost:4318`).
+///
+/// This is a one-shot export at run end — the §13 signal list as OTLP
+/// counters (`pramen.rows_in`, `pramen.rows_out`, `pramen.batches_in`,
+/// `pramen.batches_out`, `pramen.bytes_in`, `pramen.bytes_out`) plus a
+/// `pramen.run_duration` gauge in seconds, all attributed with the
+/// pipeline name. It uses a blocking HTTP client and must not be called
+/// from inside an async runtime.
+///
+/// # Errors
+///
+/// Returns a message when the exporter cannot be built or the flush to
+/// the collector fails.
+pub fn export_metrics_otlp(
+    endpoint: &str,
+    pipeline: &str,
+    snapshot: &MetricsSnapshot,
+    duration_seconds: f64,
+) -> Result<(), String> {
+    use opentelemetry::KeyValue;
+    use opentelemetry::metrics::MeterProvider as _;
+    use opentelemetry_otlp::WithExportConfig as _;
+
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_http()
+        .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
+        .with_endpoint(format!(
+            "{}/v1/metrics",
+            endpoint
+                .trim_end_matches('/')
+                .trim_end_matches("/v1/metrics")
+        ))
+        .build()
+        .map_err(|error| format!("otlp exporter: {error}"))?;
+    let provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_periodic_exporter(exporter)
+        .with_resource(
+            opentelemetry_sdk::Resource::builder()
+                .with_service_name("pramen")
+                .build(),
+        )
+        .build();
+
+    let meter = provider.meter("pramen");
+    let attributes = [KeyValue::new("pipeline", pipeline.to_owned())];
+    for (name, value) in [
+        ("pramen.rows_in", snapshot.rows_in),
+        ("pramen.rows_out", snapshot.rows_out),
+        ("pramen.batches_in", snapshot.batches_in),
+        ("pramen.batches_out", snapshot.batches_out),
+        ("pramen.bytes_in", snapshot.bytes_in),
+        ("pramen.bytes_out", snapshot.bytes_out),
+    ] {
+        meter.u64_counter(name).build().add(value, &attributes);
+    }
+    meter
+        .f64_gauge("pramen.run_duration")
+        .with_unit("s")
+        .build()
+        .record(duration_seconds, &attributes);
+
+    provider
+        .shutdown()
+        .map_err(|error| format!("otlp export: {error}"))
 }
 
 /// Shared counters incremented by pipeline stages during a run.
@@ -137,6 +216,73 @@ mod tests {
         assert_eq!("json".parse::<LogFormat>().unwrap(), LogFormat::Json);
         assert_eq!("silent".parse::<LogFormat>().unwrap(), LogFormat::Silent);
         assert!("verbose".parse::<LogFormat>().is_err());
+    }
+
+    /// Pins the JSONL event schema (F3): the exact key set a
+    /// `--log-format json` line carries for an event with fields. The
+    /// subscriber below is configured identically to [`init_logging`]'s
+    /// JSON branch; if this test fails, the JSON log contract changed
+    /// and collectors will notice too.
+    #[test]
+    fn json_event_schema_is_pinned() {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct Capture(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().map_or(Ok(0), |mut b| {
+                    b.extend_from_slice(buf);
+                    Ok(buf.len())
+                })
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Capture {
+            type Writer = Capture;
+            fn make_writer(&'a self) -> Capture {
+                self.clone()
+            }
+        }
+
+        let capture = Capture::default();
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .flatten_event(true)
+            .with_current_span(false)
+            .with_span_list(false)
+            .with_writer(capture.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(rows = 42u64, stage = "sink", "batch committed");
+        });
+
+        let bytes = capture.0.lock().unwrap().clone();
+        let line = String::from_utf8(bytes).unwrap();
+        let event: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+
+        let mut keys: Vec<&str> = event
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        // The pinned schema: the envelope plus the event's own flattened
+        // fields — nothing else.
+        assert_eq!(
+            keys,
+            ["level", "message", "rows", "stage", "target", "timestamp"]
+        );
+        for field in JSON_EVENT_ENVELOPE {
+            assert!(event.get(field).is_some(), "envelope field `{field}`");
+        }
+        assert_eq!(event["message"], "batch committed");
+        assert_eq!(event["rows"], 42);
+        assert_eq!(event["stage"], "sink");
+        assert_eq!(event["level"], "INFO");
     }
 
     #[test]

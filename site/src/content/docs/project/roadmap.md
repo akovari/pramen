@@ -64,6 +64,10 @@ This page is the honest summary.
 - **Runtime guarantees**: commit-safety on failure (no partial loads),
   first-failure error attribution, prompt cooperative shutdown — all
   covered by behavioral tests.
+- **Observability**: structured logs (`--log-format pretty|json|silent`,
+  the JSON envelope pinned by a snapshot test) and optional OTLP metrics
+  export (`run --otlp-endpoint`): the final run counters and duration,
+  pushed over HTTP/protobuf to any collector.
 - **Typed faults with an injection suite**: provider timeouts (deadline
   enforced), throttles, transport failures, malformed responses, and
   server errors each map to a documented
