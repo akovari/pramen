@@ -103,11 +103,23 @@ any model call.
 
 ## Online and batch execution
 
-Execution is online today (`auto` resolves to online). Provider **batch
-APIs** (Bedrock, OpenAI, and compatible) typically price at ~50% of
-online rates; the batch path with restart reconciliation — submitted work
-reconciled by job and record ID rather than resubmitted — is P1.8, being
-developed against a local fake batch service before any cloud spend.
+Both dispatch shapes run today, under identical governance:
+
+- **Online** (`execution: auto` or `online`): one provider call per
+  ledger miss, streamed row by row.
+- **Provider-batch** (`execution: batch`): ledger misses are collected
+  while input streams through, submitted as one asynchronous job, then
+  polled, fetched, validated, and joined back to the buffered rows. The
+  job id is recorded per item in the durable ledger *before* results are
+  awaited, so a run that crashes after submission **reconciles on restart
+  by job and item id instead of resubmitting** — submitted work is never
+  billed twice. Provider batch APIs (Bedrock, OpenAI, and compatible)
+  typically price at ~50% of online rates.
+
+The batch machinery — submission, polling, reconciliation, budgets — is
+fully exercised against the local batch-capable `mock` provider today;
+the Bedrock and OpenAI batch adapters are the cloud legs of P1.8 and
+plug into the same operator.
 
 ## Providers
 

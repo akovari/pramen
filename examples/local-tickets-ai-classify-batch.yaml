@@ -1,0 +1,58 @@
+# The provider-batch variant of the local governed-AI pipeline: identical
+# governance (ledger, budgets, validation), but ledger misses are collected
+# while input streams through, submitted as one asynchronous provider job,
+# then polled, fetched, and joined back to the buffered rows.
+#
+# The job id is recorded per item in the durable ledger *before* results
+# are awaited, so a run that crashes after submission reconciles on
+# restart by job and item id instead of resubmitting — submitted work is
+# never billed twice.
+#
+#   export PRAMEN_POSTGRES_DSN=postgres://pramen:pramen@localhost:5432/pramen_dev
+#   pramen run examples/local-tickets-ai-classify-batch.yaml
+#   pramen ai status
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: local-tickets-ai-classify-batch
+spec:
+  models:
+    classifier:
+      provider: mock
+      model: mock-1
+  source:
+    type: object_store
+    url: /tmp/pramen-ai-input
+    format:
+      type: ndjson
+  transforms:
+    - id: clean
+      type: sql
+      query: >
+        SELECT id, description
+        FROM input
+        WHERE description IS NOT NULL AND length(description) > 3
+    - id: classify
+      type: ai.classify
+      model: classifier
+      execution: batch
+      inputs: [description]
+      instruction: >
+        Classify the support ticket into a category and estimate a
+        confidence score between 0 and 1.
+      output:
+        fields:
+          - name: category
+            type: utf8
+          - name: confidence
+            type: float64
+      validation:
+        onInvalid: fail
+      budget:
+        maxInputTokensPerRecord: 2048
+        maxOutputTokensPerRecord: 256
+        maxRunTokens: 100000
+  sink:
+    type: postgres
+    target: analytics.tickets_classified
+    mode: append

@@ -1,20 +1,30 @@
 //! The `ai.extract` / `ai.classify` transform operator.
 //!
 //! Per record: build the content-addressed work key, consult the ledger,
-//! enforce budgets, dispatch online if needed, validate the output against
-//! the declared schema, record the result durably, and append the typed
+//! enforce budgets, dispatch if needed, validate the output against the
+//! declared schema, record the result durably, and append the typed
 //! output columns to the batch. Records whose output fails validation
 //! follow the transform's `onInvalid` policy.
 //!
-//! v1 scope notes: execution is online (provider-batch dispatch lands with
-//! P1.8), rows are processed sequentially (bounded concurrency is a
-//! planned optimization), and `review` routing drops the record with a
+//! Two dispatch shapes share all of that governance:
+//!
+//! - **online** (`execution: auto` or `online`): one provider call per
+//!   ledger miss, streamed row by row;
+//! - **provider-batch** (`execution: batch`): ledger misses are collected
+//!   while input streams through, submitted as one asynchronous job whose
+//!   id is durably recorded per item *before* results are awaited, then
+//!   polled, fetched, validated, and joined back to the buffered rows.
+//!   A run that crashes after submission reconciles on restart by job and
+//!   item id instead of resubmitting — submitted work is never re-billed.
+//!
+//! v1 scope notes: rows are processed sequentially (bounded concurrency is
+//! a planned optimization), and `review` routing drops the record with a
 //! warning until the review queue exists (X1.6).
 
 use crate::budget;
 use crate::error::AiError;
 use crate::ledger::{Ledger, RecordedResult, WorkState};
-use crate::provider::{InferenceRequest, Provider, ProviderResponse};
+use crate::provider::{BatchStatus, InferenceRequest, Provider, ProviderResponse};
 use crate::schema::{output_json_schema, validate_output};
 use crate::workkey::WorkSpec;
 use arrow::array::{
@@ -28,6 +38,12 @@ use pramen_core::runtime::{StageError, Transform};
 use pramen_core::spec::{AiTransform, ExecutionMode, FieldType, InvalidPolicy};
 use serde_json::{Map, Value, json};
 use std::sync::Arc;
+
+/// How often an open provider-batch job is polled.
+const BATCH_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Poll ceiling before an open job is declared stuck (~10 minutes).
+const BATCH_MAX_POLLS: u32 = 2400;
 
 /// A governed semantic transform stage.
 pub struct SemanticTransform {
@@ -43,16 +59,29 @@ pub struct SemanticTransform {
     run_tokens: u64,
     /// Consecutive invalid-output records; trips the circuit breaker.
     consecutive_invalid: u32,
+    /// Whether this stage dispatches via the provider's batch API.
+    batch_mode: bool,
+    /// Batch mode: input batches buffered until results arrive.
+    buffered: Vec<RecordBatch>,
+    /// Batch mode: ledger misses awaiting submission, keyed by work key.
+    pending: std::collections::BTreeMap<String, InferenceRequest>,
+    /// Batch mode: submitted job ids still awaiting results.
+    open_jobs: std::collections::BTreeSet<String>,
+    /// Batch mode: whether crashed-run reconciliation has run.
+    reconciled: bool,
 }
 
 impl SemanticTransform {
     /// Build the operator for one `ai.extract`/`ai.classify` step.
     ///
+    /// `execution: auto` resolves to online; `execution: batch` requires
+    /// the provider to declare batch capability.
+    ///
     /// # Errors
     ///
     /// Returns [`AiError::Unsupported`] for spec features this build does
-    /// not execute yet (provider-batch mode, timestamp output fields), so
-    /// pipelines fail at plan time rather than mid-run.
+    /// not execute (batch on a non-batch provider, timestamp output
+    /// fields), so pipelines fail at plan time rather than mid-run.
     pub fn new(
         operation: &str,
         config: AiTransform,
@@ -60,10 +89,13 @@ impl SemanticTransform {
         model_id: &str,
         ledger: Ledger,
     ) -> Result<Self, AiError> {
-        if config.execution == ExecutionMode::Batch {
-            return Err(AiError::Unsupported(
-                "execution: batch is not implemented yet (P1.8); use auto or online".to_owned(),
-            ));
+        let batch_mode = config.execution == ExecutionMode::Batch;
+        if batch_mode && !provider.capabilities().batch {
+            return Err(AiError::Unsupported(format!(
+                "execution: batch, but provider `{}` does not support batch execution; \
+                 use auto or online",
+                provider.id()
+            )));
         }
         if let Some(field) = config
             .output
@@ -87,6 +119,11 @@ impl SemanticTransform {
             dropped_invalid: 0,
             run_tokens: 0,
             consecutive_invalid: 0,
+            batch_mode,
+            buffered: Vec::new(),
+            pending: std::collections::BTreeMap::new(),
+            open_jobs: std::collections::BTreeSet::new(),
+            reconciled: false,
         })
     }
 
@@ -105,10 +142,9 @@ impl SemanticTransform {
         }
     }
 
-    /// Obtain the validated output for one record: ledger reuse or a fresh
-    /// governed dispatch. `Ok(None)` means the record was dropped by policy.
-    async fn resolve_record(&mut self, inputs: Value) -> Result<Option<Value>, StageError> {
-        let spec = WorkSpec {
+    /// The canonical work specification for one record's inputs.
+    fn work_spec(&self, inputs: Value) -> WorkSpec {
+        WorkSpec {
             operation: self.operation.clone(),
             instruction: self.config.instruction.clone(),
             inputs,
@@ -119,7 +155,31 @@ impl SemanticTransform {
                 "temperature": 0,
                 "max_output_tokens": budget::output_cap(self.config.budget.as_ref()),
             }),
-        };
+        }
+    }
+
+    /// The provider request for one work specification.
+    fn request_for(&self, spec: &WorkSpec) -> InferenceRequest {
+        InferenceRequest {
+            instruction: self.config.instruction.clone(),
+            inputs: spec.inputs.clone(),
+            output_schema: self.output_schema.clone(),
+            max_output_tokens: budget::output_cap(self.config.budget.as_ref()),
+        }
+    }
+
+    /// The text whose size is charged against input budgets and ceilings.
+    fn request_text(request: &InferenceRequest) -> String {
+        format!(
+            "{}{}{}",
+            request.instruction, request.inputs, request.output_schema
+        )
+    }
+
+    /// Obtain the validated output for one record: ledger reuse or a fresh
+    /// governed dispatch. `Ok(None)` means the record was dropped by policy.
+    async fn resolve_record(&mut self, inputs: Value) -> Result<Option<Value>, StageError> {
+        let spec = self.work_spec(inputs);
         let key = spec.work_key();
 
         self.ledger
@@ -132,16 +192,8 @@ impl SemanticTransform {
         }
 
         // Budget gate: nothing is dispatched for an over-budget record.
-        let request = InferenceRequest {
-            instruction: self.config.instruction.clone(),
-            inputs: spec.inputs.clone(),
-            output_schema: self.output_schema.clone(),
-            max_output_tokens: budget::output_cap(self.config.budget.as_ref()),
-        };
-        let request_text = format!(
-            "{}{}{}",
-            request.instruction, request.inputs, request.output_schema
-        );
+        let request = self.request_for(&spec);
+        let request_text = Self::request_text(&request);
         if let Err(error) = budget::enforce_input_budget(self.config.budget.as_ref(), &request_text)
         {
             return self.apply_invalid_policy(&key, &error.to_string());
@@ -180,16 +232,26 @@ impl SemanticTransform {
             }
         };
         self.run_tokens += response.input_tokens + response.output_tokens;
+        self.accept_response(&key, &response)
+    }
 
+    /// Validate and durably record one provider response, applying the
+    /// breaker and `onInvalid` policy. `Ok(None)` means the record fell to
+    /// a drop/review policy.
+    fn accept_response(
+        &mut self,
+        key: &str,
+        response: &ProviderResponse,
+    ) -> Result<Option<Value>, StageError> {
         match validate_output(&response.text, &self.config.output.fields) {
             Ok(normalized) => {
                 self.consecutive_invalid = 0;
-                self.record_completion(&key, &response, &normalized)?;
+                self.record_completion(key, response, &normalized)?;
                 Ok(Some(normalized))
             }
             Err(violation) => {
                 self.ledger
-                    .mark_failed(&key, &format!("invalid output: {violation}"))
+                    .mark_failed(key, &format!("invalid output: {violation}"))
                     .map_err(|e| self.stage_error(&e))?;
                 self.consecutive_invalid += 1;
                 let trip_at = self.config.breaker.max_consecutive_invalid;
@@ -201,7 +263,7 @@ impl SemanticTransform {
                         self.config.id,
                     )));
                 }
-                self.apply_invalid_policy(&key, &violation)
+                self.apply_invalid_policy(key, &violation)
             }
         }
     }
@@ -364,11 +426,9 @@ fn build_column(
     })
 }
 
-#[async_trait::async_trait]
-impl Transform for SemanticTransform {
-    async fn apply(&mut self, batch: RecordBatch) -> Result<Vec<RecordBatch>, StageError> {
-        // Resolve declared input columns once per batch.
-        let schema = batch.schema();
+impl SemanticTransform {
+    /// Resolve declared input columns against an incoming schema.
+    fn input_column_indices(&self, schema: &Schema) -> Result<Vec<(String, usize)>, StageError> {
         let mut input_columns = Vec::with_capacity(self.config.inputs.len());
         for name in &self.config.inputs {
             let (index, _) = schema.column_with_name(name).ok_or_else(|| {
@@ -379,19 +439,20 @@ impl Transform for SemanticTransform {
             })?;
             input_columns.push((name.clone(), index));
         }
+        Ok(input_columns)
+    }
 
+    /// Attach output columns to a batch, keeping only resolved rows.
+    fn assemble(
+        &self,
+        batch: &RecordBatch,
+        resolved: &[Option<Value>],
+    ) -> Result<RecordBatch, StageError> {
+        let schema = batch.schema();
         let mut keep = BooleanBuilder::new();
         let mut outputs: Vec<Vec<Value>> = vec![Vec::new(); self.config.output.fields.len()];
-
-        for row in 0..batch.num_rows() {
-            let mut inputs = Map::new();
-            for (name, index) in &input_columns {
-                inputs.insert(
-                    name.clone(),
-                    cell_to_json(batch.column(*index).as_ref(), row, name)?,
-                );
-            }
-            match self.resolve_record(Value::Object(inputs)).await? {
+        for outcome in resolved {
+            match outcome {
                 Some(normalized) => {
                     keep.append_value(true);
                     for (slot, field) in outputs.iter_mut().zip(&self.config.output.fields) {
@@ -402,7 +463,7 @@ impl Transform for SemanticTransform {
             }
         }
 
-        let filtered = arrow::compute::filter_record_batch(&batch, &keep.finish())
+        let filtered = arrow::compute::filter_record_batch(batch, &keep.finish())
             .map_err(StageError::external)?;
 
         let mut fields: Vec<Field> = schema.fields().iter().map(|f| f.as_ref().clone()).collect();
@@ -419,12 +480,285 @@ impl Transform for SemanticTransform {
                 values,
             )?);
         }
-        let out = RecordBatch::try_new(Arc::new(Schema::new(fields)), columns)
-            .map_err(StageError::external)?;
-        Ok(vec![out])
+        RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).map_err(StageError::external)
+    }
+
+    /// Reconcile jobs left in `submitted` by an earlier crashed run: ingest
+    /// finished ones, keep still-running ones open, re-queue failed ones.
+    /// Nothing here re-bills — no submission happens during reconciliation.
+    async fn reconcile_submitted(&mut self) -> Result<(), StageError> {
+        if self.reconciled {
+            return Ok(());
+        }
+        self.reconciled = true;
+        let submitted = self
+            .ledger
+            .submitted_items()
+            .map_err(|e| self.stage_error(&e))?;
+        let mut jobs: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for (key, request_id) in submitted {
+            // `online` markers come from crashed online dispatches; the
+            // online path retries those itself.
+            if request_id.is_empty() || request_id == "online" {
+                continue;
+            }
+            jobs.entry(request_id).or_default().push(key);
+        }
+        for (job_id, keys) in jobs {
+            tracing::info!(
+                transform = %self.config.id, %job_id, items = keys.len(),
+                "reconciling batch job from a previous run"
+            );
+            self.open_jobs.insert(job_id);
+        }
+        Ok(())
+    }
+
+    /// Register one record's work in batch mode: ledger reuse needs
+    /// nothing, submitted work stays with its open job, and fresh work is
+    /// queued for submission (budget-gated, deduplicated by work key).
+    fn collect_record(&mut self, inputs: Value) -> Result<(), StageError> {
+        let spec = self.work_spec(inputs);
+        let key = spec.work_key();
+        self.ledger
+            .upsert_pending(&key, &spec.canonical())
+            .map_err(|e| self.stage_error(&e))?;
+        match self.ledger.state(&key).map_err(|e| self.stage_error(&e))? {
+            Some(WorkState::Completed(_)) => return Ok(()),
+            Some(WorkState::Submitted { request_id })
+                if !request_id.is_empty() && request_id != "online" =>
+            {
+                // Belongs to a job reconciliation already reopened.
+                return Ok(());
+            }
+            _ => {}
+        }
+        if self.pending.contains_key(&key) {
+            return Ok(());
+        }
+
+        let request = self.request_for(&spec);
+        let request_text = Self::request_text(&request);
+        if let Err(violation) =
+            budget::enforce_input_budget(self.config.budget.as_ref(), &request_text)
+        {
+            // Policy applies now; the buffered row is filtered at emit
+            // because its work never completes.
+            self.apply_invalid_policy(&key, &violation.to_string())?;
+            return Ok(());
+        }
+        self.pending.insert(key, request);
+        Ok(())
+    }
+
+    /// Submit queued work as one provider-batch job, recording the job id
+    /// per item in the ledger *before* awaiting anything — the crash
+    /// window between submission and completion is exactly what
+    /// reconciliation covers.
+    async fn submit_pending(&mut self) -> Result<(), StageError> {
+        if self.pending.is_empty() {
+            return Ok(());
+        }
+        if let Some(ceiling) = self.config.budget.as_ref().and_then(|b| b.max_run_tokens) {
+            let needed: u64 = self
+                .pending
+                .values()
+                .map(|request| {
+                    u64::from(budget::estimate_tokens(&Self::request_text(request)))
+                        + u64::from(request.max_output_tokens.unwrap_or(0))
+                })
+                .sum();
+            if self.run_tokens + needed > ceiling {
+                return Err(StageError::InvalidData(format!(
+                    "{}: run token ceiling reached: batch of {} items needs up to {needed} \
+                     tokens, {} already consumed, maxRunTokens is {ceiling}; raise the \
+                     ceiling or narrow the input (already-completed records are in the \
+                     ledger and stay free)",
+                    self.config.id,
+                    self.pending.len(),
+                    self.run_tokens,
+                )));
+            }
+        }
+        let items: Vec<(String, InferenceRequest)> = self
+            .pending
+            .iter()
+            .map(|(key, request)| (key.clone(), request.clone()))
+            .collect();
+        let job_id = self
+            .provider
+            .submit_batch(&items)
+            .await
+            .map_err(|e| self.stage_error(&e))?;
+        for (key, _) in &items {
+            self.ledger
+                .mark_submitted(key, &job_id)
+                .map_err(|e| self.stage_error(&e))?;
+        }
+        tracing::info!(
+            transform = %self.config.id, %job_id, items = items.len(),
+            "batch job submitted"
+        );
+        self.pending.clear();
+        self.open_jobs.insert(job_id);
+        Ok(())
+    }
+
+    /// Poll open jobs to completion and ingest their results.
+    async fn drain_open_jobs(&mut self) -> Result<(), StageError> {
+        let mut polls = 0u32;
+        while let Some(job_id) = self.open_jobs.iter().next().cloned() {
+            match self
+                .provider
+                .poll_batch(&job_id)
+                .await
+                .map_err(|e| self.stage_error(&e))?
+            {
+                BatchStatus::Completed => {
+                    let results = self
+                        .provider
+                        .fetch_batch(&job_id)
+                        .await
+                        .map_err(|e| self.stage_error(&e))?;
+                    tracing::info!(
+                        transform = %self.config.id, %job_id, items = results.len(),
+                        "batch job completed"
+                    );
+                    for (key, outcome) in results {
+                        self.ingest_item(&key, outcome)?;
+                    }
+                    self.open_jobs.remove(&job_id);
+                }
+                BatchStatus::Failed(reason) => {
+                    // Items stay `submitted` in the ledger; mark them
+                    // failed so the next run re-dispatches them.
+                    let submitted = self
+                        .ledger
+                        .submitted_items()
+                        .map_err(|e| self.stage_error(&e))?;
+                    for (key, request_id) in submitted {
+                        if request_id == job_id {
+                            self.ledger
+                                .mark_failed(&key, &format!("batch job failed: {reason}"))
+                                .map_err(|e| self.stage_error(&e))?;
+                        }
+                    }
+                    return Err(StageError::InvalidData(format!(
+                        "{}: batch job {job_id} failed provider-side: {reason}",
+                        self.config.id
+                    )));
+                }
+                BatchStatus::InProgress => {
+                    polls += 1;
+                    if polls > BATCH_MAX_POLLS {
+                        return Err(StageError::InvalidData(format!(
+                            "{}: batch job {job_id} still running after {BATCH_MAX_POLLS} \
+                             polls; it stays submitted in the ledger and the next run \
+                             will reconcile it",
+                            self.config.id
+                        )));
+                    }
+                    tokio::time::sleep(BATCH_POLL_INTERVAL).await;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate and record one fetched batch item.
+    fn ingest_item(
+        &mut self,
+        key: &str,
+        outcome: Result<ProviderResponse, String>,
+    ) -> Result<(), StageError> {
+        match outcome {
+            Ok(response) => {
+                self.run_tokens += response.input_tokens + response.output_tokens;
+                self.accept_response(key, &response)?;
+                Ok(())
+            }
+            Err(reason) => {
+                self.ledger
+                    .mark_failed(key, &format!("batch item failed: {reason}"))
+                    .map_err(|e| self.stage_error(&e))?;
+                self.apply_invalid_policy(key, &reason)?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Join buffered rows to their (now ledger-resident) results.
+    fn emit_buffered(&mut self) -> Result<Vec<RecordBatch>, StageError> {
+        let buffered = std::mem::take(&mut self.buffered);
+        let mut out = Vec::with_capacity(buffered.len());
+        for batch in buffered {
+            let input_columns = self.input_column_indices(&batch.schema())?;
+            let mut resolved = Vec::with_capacity(batch.num_rows());
+            for row in 0..batch.num_rows() {
+                let inputs = row_inputs(&input_columns, &batch, row)?;
+                let key = self.work_spec(inputs).work_key();
+                let state = self.ledger.state(&key).map_err(|e| self.stage_error(&e))?;
+                resolved.push(match state {
+                    Some(WorkState::Completed(recorded)) => Some(recorded.output),
+                    // Dropped by policy (budget, invalid output, or a
+                    // failed item) — filtered out of the emitted batch.
+                    _ => None,
+                });
+            }
+            out.push(self.assemble(&batch, &resolved)?);
+        }
+        Ok(out)
+    }
+}
+
+/// The canonical JSON inputs object for one row.
+fn row_inputs(
+    input_columns: &[(String, usize)],
+    batch: &RecordBatch,
+    row: usize,
+) -> Result<Value, StageError> {
+    let mut inputs = Map::new();
+    for (name, index) in input_columns {
+        inputs.insert(
+            name.clone(),
+            cell_to_json(batch.column(*index).as_ref(), row, name)?,
+        );
+    }
+    Ok(Value::Object(inputs))
+}
+
+#[async_trait::async_trait]
+impl Transform for SemanticTransform {
+    async fn apply(&mut self, batch: RecordBatch) -> Result<Vec<RecordBatch>, StageError> {
+        let input_columns = self.input_column_indices(&batch.schema())?;
+
+        if self.batch_mode {
+            self.reconcile_submitted().await?;
+            for row in 0..batch.num_rows() {
+                let inputs = row_inputs(&input_columns, &batch, row)?;
+                self.collect_record(inputs)?;
+            }
+            self.buffered.push(batch);
+            return Ok(Vec::new());
+        }
+
+        let mut resolved = Vec::with_capacity(batch.num_rows());
+        for row in 0..batch.num_rows() {
+            let inputs = row_inputs(&input_columns, &batch, row)?;
+            resolved.push(self.resolve_record(inputs).await?);
+        }
+        Ok(vec![self.assemble(&batch, &resolved)?])
     }
 
     async fn finish(&mut self) -> Result<Vec<RecordBatch>, StageError> {
+        let emitted = if self.batch_mode {
+            self.reconcile_submitted().await?;
+            self.submit_pending().await?;
+            self.drain_open_jobs().await?;
+            self.emit_buffered()?
+        } else {
+            Vec::new()
+        };
         if self.dropped_invalid > 0 {
             tracing::warn!(
                 transform = %self.config.id,
@@ -432,7 +766,7 @@ impl Transform for SemanticTransform {
                 "records dropped by onInvalid policy during this run"
             );
         }
-        Ok(Vec::new())
+        Ok(emitted)
     }
 }
 
@@ -468,6 +802,62 @@ mod tests {
                 output_tokens: 5,
                 request_id: "garbage".to_owned(),
             })
+        }
+    }
+
+    /// A batch-capable provider whose output never validates.
+    #[derive(Default)]
+    struct GarbageBatchProvider {
+        keys: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Provider for GarbageBatchProvider {
+        fn id(&self) -> &str {
+            "garbage-batch"
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                online: false,
+                batch: true,
+                structured_output: false,
+                token_accounting: true,
+            }
+        }
+        async fn invoke(&self, _request: &InferenceRequest) -> Result<ProviderResponse, AiError> {
+            Err(AiError::Unsupported("batch only".to_owned()))
+        }
+        async fn submit_batch(
+            &self,
+            items: &[(String, InferenceRequest)],
+        ) -> Result<String, AiError> {
+            *self.keys.lock().unwrap() = items.iter().map(|(k, _)| k.clone()).collect();
+            Ok("garbage-job".to_owned())
+        }
+        async fn poll_batch(&self, _job_id: &str) -> Result<crate::provider::BatchStatus, AiError> {
+            Ok(crate::provider::BatchStatus::Completed)
+        }
+        async fn fetch_batch(
+            &self,
+            _job_id: &str,
+        ) -> Result<Vec<crate::provider::BatchItemResult>, AiError> {
+            Ok(self
+                .keys
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|key| {
+                    (
+                        key.clone(),
+                        Ok(ProviderResponse {
+                            text: "{\"wrong\": true}".to_owned(),
+                            input_tokens: 10,
+                            output_tokens: 5,
+                            request_id: "garbage".to_owned(),
+                        }),
+                    )
+                })
+                .collect())
         }
     }
 
@@ -684,21 +1074,158 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn batch_mode_and_timestamp_outputs_fail_at_construction() {
+    async fn batch_mode_requires_a_batch_capable_provider() {
         let (path, ledger) = temp_ledger("plan");
         let mut cfg = config(InvalidPolicy::Fail);
         cfg.execution = ExecutionMode::Batch;
         let error = SemanticTransform::new(
+            "ai.extract",
+            cfg.clone(),
+            Arc::new(GarbageProvider {
+                calls: std::sync::atomic::AtomicU64::new(0),
+            }),
+            "mock-1",
+            Ledger::open(&path).unwrap(),
+        )
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+        assert!(error.contains("does not support batch"), "{error}");
+
+        // A batch-capable provider plans fine.
+        SemanticTransform::new(
             "ai.extract",
             cfg,
             Arc::new(MockProvider::new()),
             "mock-1",
             ledger,
         )
-        .err()
-        .map(|e| e.to_string())
-        .unwrap_or_default();
-        assert!(error.contains("P1.8"), "{error}");
+        .unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn batch_execution_submits_once_and_joins_results() {
+        let (path, _unused) = temp_ledger("batchexec");
+        let provider = Arc::new(MockProvider::with_batch_latency(2));
+        let mut cfg = config(InvalidPolicy::Fail);
+        cfg.execution = ExecutionMode::Batch;
+
+        let mut transform = SemanticTransform::new(
+            "ai.classify",
+            cfg.clone(),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&path).unwrap(),
+        )
+        .unwrap();
+
+        // Two input batches, one duplicate work item across them: nothing
+        // is emitted while input streams through, and the duplicate is
+        // submitted only once.
+        let empty = transform
+            .apply(batch(&["printer on fire", "invoice is wrong"]))
+            .await
+            .unwrap();
+        assert!(empty.is_empty(), "batch mode buffers until finish");
+        transform
+            .apply(batch(&["printer on fire", "vpn is down"]))
+            .await
+            .unwrap();
+
+        let out = transform.finish().await.unwrap();
+        assert_eq!(provider.calls(), 3, "three unique items, one submission");
+        assert_eq!(out.len(), 2, "one emitted batch per buffered batch");
+        assert_eq!(out[0].num_rows(), 2);
+        assert_eq!(out[1].num_rows(), 2);
+        assert_eq!(out[0].num_columns(), 4);
+        assert_eq!(out[0].schema().field(2).name(), "category");
+
+        // A second run over the same ledger is pure reuse: no submission.
+        let mut replay = SemanticTransform::new(
+            "ai.classify",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&path).unwrap(),
+        )
+        .unwrap();
+        replay
+            .apply(batch(&["printer on fire", "invoice is wrong"]))
+            .await
+            .unwrap();
+        let again = replay.finish().await.unwrap();
+        assert_eq!(again[0].num_rows(), 2);
+        assert_eq!(provider.calls(), 3, "replay costs nothing");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn crash_after_submit_reconciles_without_resubmitting() {
+        let (path, _unused) = temp_ledger("reconcile");
+        let provider = Arc::new(MockProvider::with_batch_latency(1));
+        let mut cfg = config(InvalidPolicy::Fail);
+        cfg.execution = ExecutionMode::Batch;
+
+        // Run 1 submits the job and then "crashes" before results arrive:
+        // the ledger holds both items as submitted under the job id.
+        let mut crashed = SemanticTransform::new(
+            "ai.classify",
+            cfg.clone(),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&path).unwrap(),
+        )
+        .unwrap();
+        crashed
+            .apply(batch(&["printer on fire", "invoice is wrong"]))
+            .await
+            .unwrap();
+        crashed.submit_pending().await.unwrap();
+        assert_eq!(provider.calls(), 2, "billed at submission");
+        drop(crashed);
+
+        // Run 2 over the same ledger sees the open job, waits for it, and
+        // ingests its results — the items are never resubmitted.
+        let mut recovered = SemanticTransform::new(
+            "ai.classify",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&path).unwrap(),
+        )
+        .unwrap();
+        recovered
+            .apply(batch(&["printer on fire", "invoice is wrong"]))
+            .await
+            .unwrap();
+        let out = recovered.finish().await.unwrap();
+        assert_eq!(out[0].num_rows(), 2, "both rows recovered from the job");
+        assert_eq!(
+            provider.calls(),
+            2,
+            "reconciliation never re-bills submitted work"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn batch_items_with_invalid_output_follow_policy() {
+        let (path, ledger) = temp_ledger("batchinvalid");
+        let provider = Arc::new(GarbageBatchProvider::default());
+        let mut cfg = config(InvalidPolicy::Drop);
+        cfg.execution = ExecutionMode::Batch;
+        let mut transform = SemanticTransform::new(
+            "ai.classify",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+        transform.apply(batch(&["a", "b"])).await.unwrap();
+        let out = transform.finish().await.unwrap();
+        assert_eq!(out[0].num_rows(), 0, "invalid batch items dropped");
         let _ = std::fs::remove_file(path);
     }
 

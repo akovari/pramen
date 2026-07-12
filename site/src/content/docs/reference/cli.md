@@ -43,11 +43,12 @@ pipeline: governed-semantic-enrichment
 
 Validate, plan, and execute the pipeline. Parquet and NDJSON sources
 (local or `s3://`), SQL transforms, governed `ai.extract`/`ai.classify`
-steps (providers `mock`, `openai-compat`, `bedrock`), checkpointed
+steps (providers `mock`, `openai-compat`, `bedrock`; online or
+provider-batch execution with crash reconciliation), checkpointed
 incremental runs, and the Postgres sink in `append` or `upsert` mode run
-today; a pipeline using not-yet-shipped features (provider-batch
-execution, Azure/GCS) fails at plan time with a pointer to the tracking
-task, before touching any data.
+today; a pipeline using not-yet-shipped features (`execution: batch` on
+a provider without a batch adapter, Azure/GCS) fails at plan time with a
+clear message, before touching any data.
 
 - The sink connection string comes from the environment variable named by
   `spec.sink.dsnEnv`.

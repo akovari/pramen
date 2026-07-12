@@ -102,6 +102,34 @@ models:
   grown dataset pays only for new tickets; changing the instruction
   re-executes exactly the affected work.
 
+## Provider-batch execution
+
+Set `execution: batch` on the transform to trade latency for cost:
+instead of one provider call per ledger miss, misses are collected while
+input streams through, submitted as one asynchronous provider job,
+polled to completion, and joined back to the buffered rows. Provider
+batch APIs typically price at ~50% of online rates.
+
+```yaml
+    - id: classify
+      type: ai.classify
+      model: classifier
+      execution: batch
+      # ...inputs, instruction, output, validation, budget as before
+```
+
+The job id is recorded per item in the ledger *before* results are
+awaited. If the run dies after submission, the next run finds the open
+job in the ledger, waits for it, and ingests its results — nothing is
+resubmitted, nothing is billed twice. `pramen ai status` shows such
+in-flight work as `submitted`.
+
+A runnable end-to-end example lives at
+[examples/local-tickets-ai-classify-batch.yaml](https://github.com/akovari/pramen/blob/main/examples/local-tickets-ai-classify-batch.yaml).
+Batch execution requires a batch-capable provider (`mock` today;
+Bedrock and OpenAI batch adapters are the cloud legs of P1.8) — a
+pipeline asking for batch on a provider without it fails at plan time.
+
 ## Inspect the ledger
 
 ```console

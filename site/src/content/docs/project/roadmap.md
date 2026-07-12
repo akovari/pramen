@@ -36,6 +36,12 @@ This page is the honest summary.
   offline), `openai-compat` (vLLM, Ollama, llama.cpp, hosted), and
   `bedrock` (Converse API, default credential chain, region pinning,
   stub-tested offline per ADR 0005 — live acceptance pending credentials).
+- **Provider-batch execution** (`execution: batch`): ledger misses are
+  submitted as one asynchronous provider job whose id is durably
+  recorded per item before results are awaited; a run that crashes after
+  submission reconciles on restart by job and item id instead of
+  resubmitting — pinned by tests asserting zero re-billing. Exercised
+  end to end against the batch-capable `mock` provider.
 - **Runtime guarantees**: commit-safety on failure (no partial loads),
   first-failure error attribution, prompt cooperative shutdown — all
   covered by behavioral tests.
@@ -50,8 +56,8 @@ This page is the honest summary.
 
 ## In development (Phase 1)
 
-- Provider-batch execution with restart reconciliation (P1.8), developed
-  against a local fake batch service before any cloud spend.
+- Bedrock and OpenAI batch adapters (the cloud legs of P1.8; the batch
+  operator, ledger reconciliation, and budgets are already live).
 - Remote work-unit enumeration for checkpointed `s3://` sources (P1.1
   remainder); review-queue routing (X1.6).
 - The golden evaluation corpus and quality-cost frontier (S2.2), runnable

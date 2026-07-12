@@ -136,15 +136,19 @@ Early implementation; no stable public API yet. What runs today:
   Converse (stub-tested offline per ADR 0005); see
   [examples/local-tickets-ai-classify.yaml](examples/local-tickets-ai-classify.yaml)
   and `pramen ai status`;
+- provider-batch execution runs today (`execution: batch`): misses are
+  submitted as one asynchronous job whose id is durably recorded per item
+  before results are awaited, so a crash after submission reconciles on
+  restart instead of resubmitting — submitted work is never billed twice;
+  see [examples/local-tickets-ai-classify-batch.yaml](examples/local-tickets-ai-classify-batch.yaml);
 - the riskiest boundaries are spike-validated with measured results in
   [docs/spikes/](docs/spikes/): durable SQLite inference ledger with 100%
   result reuse and crash recovery (S1.1), bounded-memory Parquet + SQL at
   ~3M rows/s (S1.2), and native binary `COPY` at 3.1x the `psql \copy`
   baseline (S1.3).
 
-Provider-batch execution with restart reconciliation, upsert sinks, and
-the golden evaluation corpus are next on the
-[Phase 1 workstreams](docs/implementation-plan.md).
+The Bedrock/OpenAI batch adapters and the golden evaluation corpus are
+next on the [Phase 1 workstreams](docs/implementation-plan.md).
 
 Read the [product and architecture direction](docs/architecture.md) for the
 competitive position, proposed runtime, WASM ABI, connector strategy, delivery
@@ -193,8 +197,8 @@ The remaining risk spikes and Phase 1 workstreams, in order (each is
 developed local-first per ADR 0005; cloud spend only confirms, never
 unblocks):
 
-1. provider-batch execution with crash reconciliation (P1.8) against the
-   local fake batch service, then the S2.1 spike numbers on real Bedrock;
+1. the Bedrock/OpenAI batch adapters behind the now-live batch operator
+   (P1.8 remainder), then the S2.1 spike numbers on real Bedrock;
 2. the golden evaluation corpus and model quality-cost frontier (S2.2),
    against local models first;
 3. `run --smoke`, `ai evaluate`, and the measured ten-minute quickstart
