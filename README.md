@@ -149,6 +149,10 @@ Early implementation; no stable public API yet. What runs today:
   token ceiling, checkpointing bypassed) before a full run, and the
   documented quickstart is executed and timed in CI on every change
   ([scripts/quickstart.sh](scripts/quickstart.sh));
+- failures are typed and fault-injected: provider timeouts, throttles,
+  transport failures, malformed responses, and server errors each carry
+  a documented fault class, and a killed database backend mid-`COPY`
+  fails typed with the target untouched — all induced offline;
 - the riskiest boundaries are spike-validated with measured results in
   [docs/spikes/](docs/spikes/): durable SQLite inference ledger with 100%
   result reuse and crash recovery (S1.1), bounded-memory Parquet + SQL at
@@ -210,7 +214,7 @@ unblocks):
 2. the model quality-cost frontier table (S2.2 remainder — the corpus
    and `ai evaluate` harness are live; runs against real Bedrock models
    and a local vLLM remain);
-3. fault-injection and benchmark suites (P1.19–P1.20);
+3. the benchmark suite (P1.20);
 4. the WASM WIT component round-trip spike, gating the extensibility
    milestone, not v1 (S1.4).
 

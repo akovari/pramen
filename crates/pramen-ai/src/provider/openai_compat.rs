@@ -2,17 +2,29 @@
 //! llama.cpp server, and hosted OpenAI-protocol services).
 
 use super::{Capabilities, InferenceRequest, Provider, ProviderResponse, strip_fences};
-use crate::error::AiError;
+use crate::error::{AiError, ProviderFault};
 use serde::Deserialize;
 use serde_json::json;
+use std::time::Duration;
+
+/// Default per-request deadline. Local models on modest hardware can be
+/// slow, so this is generous; tighten it per deployment via
+/// [`OpenAiCompatProvider::with_timeout`].
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Calls `POST {endpoint}/chat/completions` and expects a single JSON
 /// object back in the assistant message.
+///
+/// Failures are classified onto [`ProviderFault`]: deadline overruns are
+/// `Timeout`, refused/reset connections `Transport`, HTTP 429 `Throttled`,
+/// other non-success statuses `Server`, and well-formed HTTP with a body
+/// that is not protocol-shaped `Protocol`.
 pub struct OpenAiCompatProvider {
     client: reqwest::Client,
     endpoint: String,
     model: String,
     api_key: Option<String>,
+    timeout: Duration,
 }
 
 #[derive(Deserialize)]
@@ -48,13 +60,35 @@ impl OpenAiCompatProvider {
             endpoint: endpoint.trim_end_matches('/').to_owned(),
             model: model.to_owned(),
             api_key,
+            timeout: DEFAULT_TIMEOUT,
         }
     }
 
-    fn provider_error(&self, message: impl std::fmt::Display) -> AiError {
+    /// Override the per-request deadline (default two minutes).
+    #[must_use]
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    fn provider_error(&self, fault: ProviderFault, message: impl std::fmt::Display) -> AiError {
         AiError::Provider {
             provider: self.id().to_owned(),
+            fault,
             message: message.to_string(),
+        }
+    }
+
+    /// Classify a reqwest transport-level failure.
+    fn classify(error: &reqwest::Error) -> ProviderFault {
+        if error.is_timeout() {
+            ProviderFault::Timeout
+        } else if error.is_connect() {
+            ProviderFault::Transport
+        } else if error.is_decode() {
+            ProviderFault::Protocol
+        } else {
+            ProviderFault::Transport
         }
     }
 }
@@ -98,6 +132,7 @@ impl Provider for OpenAiCompatProvider {
         let mut http = self
             .client
             .post(format!("{}/chat/completions", self.endpoint))
+            .timeout(self.timeout)
             .json(&body);
         if let Some(key) = &self.api_key {
             http = http.bearer_auth(key);
@@ -105,21 +140,28 @@ impl Provider for OpenAiCompatProvider {
         let response = http
             .send()
             .await
-            .map_err(|e| self.provider_error(format!("request failed: {e}")))?;
+            .map_err(|e| self.provider_error(Self::classify(&e), format!("request failed: {e}")))?;
 
         let status = response.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let detail = response.text().await.unwrap_or_default();
+            return Err(self.provider_error(
+                ProviderFault::Throttled,
+                format!("HTTP 429 Too Many Requests: {detail}"),
+            ));
+        }
         if !status.is_success() {
             let detail = response.text().await.unwrap_or_default();
-            return Err(self.provider_error(format!("HTTP {status}: {detail}")));
+            return Err(
+                self.provider_error(ProviderFault::Server, format!("HTTP {status}: {detail}"))
+            );
         }
-        let parsed: ChatResponse = response
-            .json()
-            .await
-            .map_err(|e| self.provider_error(format!("malformed response: {e}")))?;
-        let choice = parsed
-            .choices
-            .first()
-            .ok_or_else(|| self.provider_error("response contained no choices"))?;
+        let parsed: ChatResponse = response.json().await.map_err(|e| {
+            self.provider_error(ProviderFault::Protocol, format!("malformed response: {e}"))
+        })?;
+        let choice = parsed.choices.first().ok_or_else(|| {
+            self.provider_error(ProviderFault::Protocol, "response contained no choices")
+        })?;
 
         Ok(ProviderResponse {
             text: strip_fences(&choice.message.content).to_owned(),

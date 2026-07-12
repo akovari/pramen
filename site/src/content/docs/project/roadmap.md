@@ -56,6 +56,12 @@ This page is the honest summary.
 - **Runtime guarantees**: commit-safety on failure (no partial loads),
   first-failure error attribution, prompt cooperative shutdown — all
   covered by behavioral tests.
+- **Typed faults with an injection suite**: provider timeouts (deadline
+  enforced), throttles, transport failures, malformed responses, and
+  server errors each map to a documented
+  [fault class](/pramen/concepts/runtime/#typed-faults); a killed
+  database backend mid-`COPY` fails typed with the target table
+  untouched. All induced offline.
 
 ## Spike-validated (design proven)
 
@@ -74,7 +80,8 @@ This page is the honest summary.
 - The model quality-cost frontier table (S2.2 remainder): the corpus and
   `ai evaluate` harness are live; the pinned model choice per tier needs
   runs against real Bedrock models and a local vLLM.
-- Fault-injection and benchmark suites (P1.19–P1.20).
+- The benchmark suite (P1.20): end-to-end throughput, CPU-s/GiB, peak
+  RSS, ledger overhead, and baselines vs direct DataFusion and DuckDB.
 
 ## After v1
 

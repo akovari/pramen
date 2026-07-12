@@ -3,7 +3,7 @@
 use super::{
     BatchItemResult, BatchStatus, Capabilities, InferenceRequest, Provider, ProviderResponse,
 };
-use crate::error::AiError;
+use crate::error::{AiError, ProviderFault};
 use crate::workkey::canonical_json;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -136,6 +136,7 @@ impl Provider for MockProvider {
         let job_id = format!("mock-job-{}", self.next_job.fetch_add(1, Ordering::SeqCst));
         let mut jobs = self.jobs.lock().map_err(|_| AiError::Provider {
             provider: "mock".to_owned(),
+            fault: ProviderFault::Server,
             message: "job store poisoned".to_owned(),
         })?;
         jobs.insert(
@@ -151,10 +152,12 @@ impl Provider for MockProvider {
     async fn poll_batch(&self, job_id: &str) -> Result<BatchStatus, AiError> {
         let mut jobs = self.jobs.lock().map_err(|_| AiError::Provider {
             provider: "mock".to_owned(),
+            fault: ProviderFault::Server,
             message: "job store poisoned".to_owned(),
         })?;
         let job = jobs.get_mut(job_id).ok_or_else(|| AiError::Provider {
             provider: "mock".to_owned(),
+            fault: ProviderFault::Protocol,
             message: format!("unknown batch job `{job_id}`"),
         })?;
         if job.polls_remaining > 0 {
@@ -167,10 +170,12 @@ impl Provider for MockProvider {
     async fn fetch_batch(&self, job_id: &str) -> Result<Vec<BatchItemResult>, AiError> {
         let jobs = self.jobs.lock().map_err(|_| AiError::Provider {
             provider: "mock".to_owned(),
+            fault: ProviderFault::Server,
             message: "job store poisoned".to_owned(),
         })?;
         let job = jobs.get(job_id).ok_or_else(|| AiError::Provider {
             provider: "mock".to_owned(),
+            fault: ProviderFault::Protocol,
             message: format!("unknown batch job `{job_id}`"),
         })?;
         Ok(job

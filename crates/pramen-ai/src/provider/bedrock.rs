@@ -48,10 +48,39 @@ impl BedrockProvider {
         }
     }
 
-    fn provider_error(&self, message: impl std::fmt::Display) -> AiError {
+    fn provider_error(
+        &self,
+        fault: crate::error::ProviderFault,
+        message: impl std::fmt::Display,
+    ) -> AiError {
         AiError::Provider {
             provider: self.id().to_owned(),
+            fault,
             message: message.to_string(),
+        }
+    }
+
+    /// Classify a Converse SDK failure onto the typed fault taxonomy.
+    fn classify<R>(
+        error: &aws_sdk_bedrockruntime::error::SdkError<
+            aws_sdk_bedrockruntime::operation::converse::ConverseError,
+            R,
+        >,
+    ) -> crate::error::ProviderFault {
+        use crate::error::ProviderFault;
+        use aws_sdk_bedrockruntime::error::SdkError;
+        use aws_sdk_bedrockruntime::operation::converse::ConverseError;
+        match error {
+            SdkError::TimeoutError(_) => ProviderFault::Timeout,
+            SdkError::DispatchFailure(failure) if failure.is_timeout() => ProviderFault::Timeout,
+            SdkError::DispatchFailure(_) => ProviderFault::Transport,
+            SdkError::ResponseError(_) => ProviderFault::Protocol,
+            SdkError::ServiceError(service) => match service.err() {
+                ConverseError::ThrottlingException(_) => ProviderFault::Throttled,
+                ConverseError::ModelTimeoutException(_) => ProviderFault::Timeout,
+                _ => ProviderFault::Server,
+            },
+            _ => ProviderFault::Transport,
         }
     }
 }
@@ -83,7 +112,12 @@ impl Provider for BedrockProvider {
             .role(ConversationRole::User)
             .content(ContentBlock::Text(request.inputs.to_string()))
             .build()
-            .map_err(|e| self.provider_error(format!("build message: {e}")))?;
+            .map_err(|e| {
+                self.provider_error(
+                    crate::error::ProviderFault::Protocol,
+                    format!("build message: {e}"),
+                )
+            })?;
         let mut inference = InferenceConfiguration::builder().temperature(0.0);
         if let Some(cap) = request.max_output_tokens {
             inference = inference.max_tokens(i32::try_from(cap).unwrap_or(i32::MAX));
@@ -99,19 +133,28 @@ impl Provider for BedrockProvider {
             .send()
             .await
             .map_err(|e| {
-                self.provider_error(aws_sdk_bedrockruntime::error::DisplayErrorContext(e))
+                let fault = Self::classify(&e);
+                self.provider_error(fault, aws_sdk_bedrockruntime::error::DisplayErrorContext(e))
             })?;
 
         let request_id = response.request_id().unwrap_or_default().to_owned();
-        let usage = response
-            .usage()
-            .ok_or_else(|| self.provider_error("response is missing usage accounting"))?;
+        let usage = response.usage().ok_or_else(|| {
+            self.provider_error(
+                crate::error::ProviderFault::Protocol,
+                "response is missing usage accounting",
+            )
+        })?;
         let text = response
             .output()
             .and_then(|o| o.as_message().ok())
             .and_then(|m| m.content().first())
             .and_then(|c| c.as_text().ok())
-            .ok_or_else(|| self.provider_error("response contained no text content"))?;
+            .ok_or_else(|| {
+                self.provider_error(
+                    crate::error::ProviderFault::Protocol,
+                    "response contained no text content",
+                )
+            })?;
 
         Ok(ProviderResponse {
             text: strip_fences(text).to_owned(),

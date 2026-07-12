@@ -305,6 +305,83 @@ mod tests {
         assert_eq!(nulls, 2);
     }
 
+    /// P1.19 fault injection (L2): the database connection dies mid-load
+    /// (simulating failover or a network partition). The failure must
+    /// surface as a typed [`StageError`] — no panic, no hang — and the
+    /// target table must be untouched, because nothing committed.
+    #[tokio::test]
+    async fn killed_backend_mid_copy_is_a_typed_error_and_commits_nothing() {
+        let Ok(dsn) = std::env::var("PRAMEN_TEST_POSTGRES_DSN") else {
+            eprintln!("skipping: PRAMEN_TEST_POSTGRES_DSN not set");
+            return;
+        };
+        let (setup, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(connection);
+        setup
+            .batch_execute(
+                "DROP TABLE IF EXISTS public.pramen_fault_test;
+                 CREATE TABLE public.pramen_fault_test (id bigint NOT NULL, label text)",
+            )
+            .await
+            .unwrap();
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("label", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3])),
+                Arc::new(StringArray::from(vec![Some("a"), None, Some("c")])),
+            ],
+        )
+        .unwrap();
+
+        let mut sink =
+            PostgresCopySink::connect(&dsn, "public.pramen_fault_test", SinkMode::Append, &[])
+                .await
+                .unwrap();
+        // The sink's backend pid, read before the COPY occupies the
+        // connection.
+        let pid: i32 = sink
+            .client
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await
+            .unwrap()
+            .get(0);
+
+        sink.write(batch.clone()).await.unwrap();
+
+        // Kill the sink's server process from another connection.
+        setup
+            .query_one("SELECT pg_terminate_backend($1)", &[&pid])
+            .await
+            .unwrap();
+
+        // Whatever the sink does next must fail with a typed error.
+        let failure = async {
+            sink.write(batch).await?;
+            sink.commit().await
+        }
+        .await
+        .expect_err("a killed backend must fail the load");
+        assert!(
+            matches!(failure, StageError::External(_)),
+            "expected a typed external-system error, got: {failure:?}"
+        );
+
+        // And the target is exactly as it was: empty.
+        let count: i64 = setup
+            .query_one("SELECT count(*) FROM public.pramen_fault_test", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 0, "an uncommitted load must leave no rows behind");
+    }
+
     /// P1.14 (L2): the delivery contract, pinned. A replayed `append` run
     /// duplicates rows — that is the documented at-least-once window — and
     /// the same replay under `upsert` is idempotent.

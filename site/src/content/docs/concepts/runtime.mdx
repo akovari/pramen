@@ -63,6 +63,28 @@ is verified to stall after filling the channels.
   every potentially blocking await in every stage races against it, so
   shutdown is prompt even mid-batch.
 
+## Typed faults
+
+Every induced failure surfaces as a documented, typed error — never a
+panic, a hang, or an untyped string — and a fault-injection suite pins
+this. Stage failures are classified as *invalid data* (user-fixable:
+schema, value, configuration) or *external system* (object store,
+database, provider). Provider calls carry a finer taxonomy:
+
+| Fault | Meaning | Typical response |
+| --- | --- | --- |
+| `timeout` | The request exceeded its deadline (2 min default for `openai-compat`, tunable) | Retry; environmental |
+| `throttled` | Rate or quota rejection (HTTP 429 and equivalents) | Back off and retry |
+| `transport` | Connection refused, reset, DNS failure | Retry; check the endpoint |
+| `protocol` | The provider answered outside its protocol shape | Check endpoint/model configuration |
+| `server` | Provider-side failure (HTTP 5xx) | Provider incident; wait or escalate |
+
+Retrying is always safe bookkeeping: completed work is in the ledger and
+is never re-dispatched, and the sink's transactionality means a failed
+run committed nothing. The suite also kills the database backend
+mid-`COPY` and verifies the run fails typed with the target table
+untouched.
+
 ## Commit safety
 
 The sink finalizes its work (transaction commit, staging-table merge) only

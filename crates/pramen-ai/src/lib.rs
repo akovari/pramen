@@ -24,4 +24,4 @@ pub mod provider;
 pub mod schema;
 pub mod workkey;
 
-pub use error::AiError;
+pub use error::{AiError, ProviderFault};
