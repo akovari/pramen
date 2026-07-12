@@ -253,8 +253,7 @@ mod tests {
     /// skip it and rely on the encoder unit tests.
     #[tokio::test]
     async fn loads_and_commits_against_real_postgres() {
-        let Ok(dsn) = std::env::var("PRAMEN_TEST_POSTGRES_DSN") else {
-            eprintln!("skipping: PRAMEN_TEST_POSTGRES_DSN not set");
+        let Some(dsn) = pramen_testkit::env::postgres_dsn() else {
             return;
         };
         let (setup, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
@@ -313,8 +312,7 @@ mod tests {
     /// target table must be untouched, because nothing committed.
     #[tokio::test]
     async fn killed_backend_mid_copy_is_a_typed_error_and_commits_nothing() {
-        let Ok(dsn) = std::env::var("PRAMEN_TEST_POSTGRES_DSN") else {
-            eprintln!("skipping: PRAMEN_TEST_POSTGRES_DSN not set");
+        let Some(dsn) = pramen_testkit::env::postgres_dsn() else {
             return;
         };
         let (setup, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
@@ -389,8 +387,7 @@ mod tests {
     /// the same replay under `upsert` is idempotent.
     #[tokio::test]
     async fn delivery_contract_append_duplicates_upsert_does_not() {
-        let Ok(dsn) = std::env::var("PRAMEN_TEST_POSTGRES_DSN") else {
-            eprintln!("skipping: PRAMEN_TEST_POSTGRES_DSN not set");
+        let Some(dsn) = pramen_testkit::env::postgres_dsn() else {
             return;
         };
         let (setup, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
@@ -474,8 +471,7 @@ mod tests {
     /// duplicates to the last-written row.
     #[tokio::test]
     async fn upsert_is_idempotent_and_last_write_wins() {
-        let Ok(dsn) = std::env::var("PRAMEN_TEST_POSTGRES_DSN") else {
-            eprintln!("skipping: PRAMEN_TEST_POSTGRES_DSN not set");
+        let Some(dsn) = pramen_testkit::env::postgres_dsn() else {
             return;
         };
         let (setup, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)

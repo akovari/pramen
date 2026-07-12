@@ -28,6 +28,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
+pramen-testkit = { path = "../pramen-testkit" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [[bench]]

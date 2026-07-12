@@ -480,8 +480,7 @@ mod tests {
     /// `AWS_*` variables pointing at the local endpoint; skipped when unset.
     #[tokio::test]
     async fn reads_parquet_from_s3_compatible_store() {
-        let Ok(url) = std::env::var("PRAMEN_TEST_S3_URL") else {
-            eprintln!("skipping: PRAMEN_TEST_S3_URL not set");
+        let Some(url) = pramen_testkit::env::s3_url() else {
             return;
         };
         let mut source = ParquetSource::open(&url, 64 << 20, 128).await.unwrap();
@@ -497,8 +496,7 @@ mod tests {
     /// enumerated unit streams only that unit. Guarded like the test above.
     #[tokio::test]
     async fn enumerates_work_units_from_s3_compatible_store() {
-        let Ok(url) = std::env::var("PRAMEN_TEST_S3_URL") else {
-            eprintln!("skipping: PRAMEN_TEST_S3_URL not set");
+        let Some(url) = pramen_testkit::env::s3_url() else {
             return;
         };
         let units = list_work_units(&url, &["parquet"]).await.unwrap();

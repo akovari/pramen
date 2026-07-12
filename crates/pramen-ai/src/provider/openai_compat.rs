@@ -403,8 +403,7 @@ impl Provider for OpenAiCompatProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader, Read, Write};
-    use std::net::TcpListener;
+    use pramen_testkit::http::one_shot_json;
 
     #[test]
     fn fences_are_stripped() {
@@ -417,44 +416,17 @@ mod tests {
     /// HTTP server returning a canned OpenAI-shaped response.
     #[tokio::test(flavor = "multi_thread")]
     async fn adapter_parses_openai_shaped_responses() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(&mut stream);
-            let mut request_line = String::new();
-            reader.read_line(&mut request_line).unwrap();
-            let mut content_length = 0;
-            loop {
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-                    content_length = value.trim().parse().unwrap();
-                }
-                if line == "\r\n" {
-                    break;
-                }
-            }
-            let mut body = vec![0u8; content_length];
-            reader.read_exact(&mut body).unwrap();
-            let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-            let payload = json!({
+        let (base, server) = one_shot_json(
+            json!({
                 "id": "chatcmpl-stub-1",
                 "choices": [{"message": {"role": "assistant",
                     "content": "```json\n{\"category\":\"billing\"}\n```"}}],
                 "usage": {"prompt_tokens": 42, "completion_tokens": 7}
-            })
-            .to_string();
-            let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{payload}",
-                payload.len()
-            );
-            stream.write_all(response.as_bytes()).unwrap();
-            (request_line, request)
-        });
+            }),
+            &[],
+        );
 
-        let provider = OpenAiCompatProvider::new(&format!("http://{addr}/v1"), "test-model", None);
+        let provider = OpenAiCompatProvider::new(&format!("{base}/v1"), "test-model", None);
         let response = provider
             .invoke(&InferenceRequest {
                 instruction: "classify".into(),
@@ -470,8 +442,10 @@ mod tests {
         assert_eq!(response.output_tokens, 7);
         assert_eq!(response.request_id, "chatcmpl-stub-1");
 
-        let (request_line, request) = server.join().unwrap();
-        assert!(request_line.starts_with("POST /v1/chat/completions"));
+        let captured = server.join().unwrap();
+        assert_eq!(captured.method, "POST");
+        assert_eq!(captured.path, "/v1/chat/completions");
+        let request = captured.json();
         assert_eq!(request["model"], "test-model");
         assert_eq!(request["max_tokens"], 64);
         assert_eq!(

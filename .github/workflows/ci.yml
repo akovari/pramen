@@ -47,6 +47,31 @@ jobs:
       - run: cargo nextest run --workspace --profile ci
       - run: cargo test --doc --workspace
 
+  l2-postgres:
+    # The container-backed L2 layer (ADR 0005): the same test binaries as
+    # the matrix job, but with a real PostgreSQL service so the
+    # env-guarded delivery-contract and fault tests actually run.
+    name: L2 (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: l2
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PRAMEN_TEST_POSTGRES_DSN: postgres://postgres:l2@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - run: cargo nextest run -p pramen-io -p pramen --profile ci
+
   msrv:
     name: MSRV (1.88)
     runs-on: ubuntu-latest

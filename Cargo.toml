@@ -7,6 +7,7 @@ members = [
     "crates/pramen-core",
     "crates/pramen-io",
     "crates/pramen-ai",
+    "crates/pramen-testkit",
     "crates/pramen-wasm",
 ]
 

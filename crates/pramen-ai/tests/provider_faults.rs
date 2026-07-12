@@ -10,8 +10,8 @@
 
 use pramen_ai::provider::{InferenceRequest, OpenAiCompatProvider, Provider};
 use pramen_ai::{AiError, ProviderFault};
+use pramen_testkit::http::one_shot_raw;
 use serde_json::json;
-use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
 
@@ -27,20 +27,7 @@ fn request() -> InferenceRequest {
 /// Serve one connection: consume the request, answer with `response`
 /// (raw HTTP), or hang for `hold` first.
 fn stub(response: &'static str, hold: Option<Duration>) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
-    std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
-        // Read the request without parsing; the tests only care about
-        // the response side.
-        let mut buffer = [0u8; 8192];
-        let _ = stream.read(&mut buffer);
-        if let Some(pause) = hold {
-            std::thread::sleep(pause);
-        }
-        let _ = stream.write_all(response.as_bytes());
-    });
-    format!("http://{addr}/v1")
+    format!("{}/v1", one_shot_raw(response, hold))
 }
 
 fn fault_of(error: AiError) -> ProviderFault {

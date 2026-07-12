@@ -1,0 +1,15 @@
+[package]
+name = "pramen-testkit"
+description = "Shared test fixtures for the Pramen workspace (never published)"
+version.workspace = true
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -168,56 +168,27 @@ impl Provider for BedrockProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pramen_testkit::http::one_shot_json;
     use serde_json::json;
-    use std::io::{BufRead, BufReader, Read, Write};
-    use std::net::TcpListener;
 
     /// L1 protocol-stub test (ADR 0005): the real adapter and AWS SDK
     /// against a local HTTP server returning a canned Converse response.
     #[tokio::test(flavor = "multi_thread")]
     async fn adapter_parses_converse_responses() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(&mut stream);
-            let mut request_line = String::new();
-            reader.read_line(&mut request_line).unwrap();
-            let mut content_length = 0;
-            loop {
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-                    content_length = value.trim().parse().unwrap();
-                }
-                if line == "\r\n" {
-                    break;
-                }
-            }
-            let mut body = vec![0u8; content_length];
-            reader.read_exact(&mut body).unwrap();
-            let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-            let payload = json!({
+        let (base, server) = one_shot_json(
+            json!({
                 "output": {"message": {"role": "assistant",
                     "content": [{"text": "{\"category\":\"incident\"}"}]}},
                 "stopReason": "end_turn",
                 "usage": {"inputTokens": 55, "outputTokens": 9, "totalTokens": 64}
-            })
-            .to_string();
-            let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
-                 x-amzn-requestid: req-stub-42\r\ncontent-length: {}\r\n\r\n{payload}",
-                payload.len()
-            );
-            stream.write_all(response.as_bytes()).unwrap();
-            (request_line, request)
-        });
+            }),
+            &[("x-amzn-requestid", "req-stub-42")],
+        );
 
         let provider = BedrockProvider::new(
             "anthropic.claude-3-haiku-20240307-v1:0",
             Some("eu-central-1"),
-            Some(&format!("http://{addr}")),
+            Some(&base),
         )
         .await;
         let response = provider
@@ -235,10 +206,14 @@ mod tests {
         assert_eq!(response.output_tokens, 9);
         assert_eq!(response.request_id, "req-stub-42");
 
-        let (request_line, request) = server.join().unwrap();
+        let captured = server.join().unwrap();
+        let request = captured.json();
         assert!(
-            request_line.contains("/model/anthropic.claude-3-haiku-20240307-v1%3A0/converse"),
-            "{request_line}"
+            captured
+                .path
+                .contains("/model/anthropic.claude-3-haiku-20240307-v1%3A0/converse"),
+            "{}",
+            captured.path
         );
         assert_eq!(
             request["messages"][0]["content"][0]["text"],

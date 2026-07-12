@@ -47,6 +47,11 @@ Everything runs through mise; CI runs the same tasks.
   real local services (testcontainers Postgres, MinIO, OpenAI-compatible
   local models, fake batch service); weekly budget-alarmed cloud acceptance.
   PRs must pass with zero cloud access and zero credentials.
+- Shared test fixtures live in the dev-only `pramen-testkit` crate: L1
+  HTTP stubs (`http::one_shot_raw`, `http::one_shot_json`,
+  `http::serve_router`, all capturing requests) and the L2 env guards
+  (`env::postgres_dsn()`, `env::s3_url()`). Use them instead of
+  hand-rolling `TcpListener` loops or `std::env::var` guards in tests.
 - L2 database tests are env-guarded: set `PRAMEN_TEST_POSTGRES_DSN` to run
   them, unset to skip. A machine-local `mise.local.toml` (gitignored) is the
   right place for that variable when a local PostgreSQL is available.

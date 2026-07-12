@@ -3363,6 +3363,7 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "criterion",
  "pramen-core",
+ "pramen-testkit",
  "reqwest",
  "rusqlite",
  "serde",
@@ -3404,11 +3405,19 @@ dependencies = [
  "futures",
  "object_store",
  "pramen-core",
+ "pramen-testkit",
  "thiserror",
  "tokio",
  "tokio-postgres",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "pramen-testkit"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
