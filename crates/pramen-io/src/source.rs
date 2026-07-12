@@ -9,18 +9,23 @@ use pramen_core::checkpoint::WorkUnit;
 use pramen_core::runtime::{Source, StageError};
 use std::sync::Arc;
 
-/// Enumerate the source files under a local URL as checkpointable work
-/// units (architecture §11: one immutable file = one unit).
+/// Enumerate the source files under a URL as checkpointable work units
+/// (architecture §11: one immutable file = one unit).
 ///
-/// A file URL yields one unit; a directory yields one unit per contained
-/// file whose extension is in `extensions` (non-recursive, matching
-/// DataFusion's single-level listing behavior).
+/// A file URL yields one unit; a directory (or `s3://` prefix) yields one
+/// unit per contained file whose extension is in `extensions`
+/// (non-recursive, matching DataFusion's single-level listing behavior).
+/// S3 identity comes from the object listing itself: key, size, and
+/// last-modified — one `LIST` per run, no per-object requests.
 ///
 /// # Errors
 ///
-/// Returns a [`StageError`] when the URL is remote (checkpointed remote
-/// enumeration lands with the rest of P1.1) or cannot be read.
-pub fn list_work_units(url: &str, extensions: &[&str]) -> Result<Vec<WorkUnit>, StageError> {
+/// Returns a [`StageError`] when the URL scheme is unsupported (Azure
+/// Blob and GCS are tracked in X1.5) or the location cannot be read.
+pub async fn list_work_units(url: &str, extensions: &[&str]) -> Result<Vec<WorkUnit>, StageError> {
+    if let Some(rest) = url.strip_prefix("s3://") {
+        return list_s3_work_units(rest, url, extensions).await;
+    }
     let path = local_path(url)?;
     let root = std::path::Path::new(&path);
     let metadata = std::fs::metadata(root)
@@ -63,6 +68,64 @@ pub fn list_work_units(url: &str, extensions: &[&str]) -> Result<Vec<WorkUnit>, 
         });
     }
     Ok(units)
+}
+
+/// Enumerate `s3://` work units from the object listing: key, size, and
+/// last-modified come back from a single `LIST` request (no per-object
+/// round trips). A URL whose final segment carries a matching extension
+/// names one object; otherwise it is treated as a prefix.
+async fn list_s3_work_units(
+    rest: &str,
+    url: &str,
+    extensions: &[&str],
+) -> Result<Vec<WorkUnit>, StageError> {
+    use object_store::ObjectStore;
+
+    let (bucket, key) = rest.split_once('/').unwrap_or((rest, ""));
+    if bucket.is_empty() {
+        return Err(StageError::InvalidData(format!(
+            "source URL `{url}` has no bucket"
+        )));
+    }
+    let store = object_store::aws::AmazonS3Builder::from_env()
+        .with_bucket_name(bucket)
+        .build()
+        .map_err(|e| {
+            StageError::InvalidData(format!(
+                "S3 configuration for `{url}`: {e} (set AWS_ACCESS_KEY_ID, \
+                 AWS_SECRET_ACCESS_KEY, AWS_REGION, and optionally AWS_ENDPOINT / \
+                 AWS_ALLOW_HTTP for S3-compatible services)"
+            ))
+        })?;
+
+    let matches = |location: &object_store::path::Path| {
+        location
+            .extension()
+            .is_some_and(|e| extensions.iter().any(|x| x.eq_ignore_ascii_case(e)))
+    };
+
+    let key_path = object_store::path::Path::from(key);
+    let mut metas = Vec::new();
+    if matches(&key_path) {
+        let meta = store.head(&key_path).await.map_err(StageError::external)?;
+        metas.push(meta);
+    } else {
+        let prefix = (!key.is_empty()).then_some(&key_path);
+        let listing = store
+            .list_with_delimiter(prefix)
+            .await
+            .map_err(StageError::external)?;
+        metas.extend(listing.objects.into_iter().filter(|m| matches(&m.location)));
+    }
+    metas.sort_by(|a, b| a.location.cmp(&b.location));
+    Ok(metas
+        .into_iter()
+        .map(|meta| WorkUnit {
+            url: format!("s3://{bucket}/{}", meta.location),
+            size: meta.size,
+            modified_millis: meta.last_modified.timestamp_millis(),
+        })
+        .collect())
 }
 
 /// Streams Arrow batches from Parquet files under a URL.
@@ -257,16 +320,16 @@ impl Source for NdjsonSource {
     }
 }
 
-/// Resolve a URL to a local filesystem path, for operations that are
-/// local-only today (checkpointed work-unit enumeration).
+/// Resolve a URL to a local filesystem path (`s3://` is handled before
+/// this is called).
 fn local_path(url: &str) -> Result<String, StageError> {
     if let Some(path) = url.strip_prefix("file://") {
         return Ok(path.to_owned());
     }
     if url.contains("://") {
         return Err(StageError::InvalidData(format!(
-            "`{url}`: checkpointed enumeration supports local paths and file:// only today; \
-             remote work-unit enumeration is tracked in P1.1"
+            "unsupported source URL scheme in `{url}`; v1 supports local paths, file://, \
+             and s3:// (Azure Blob and GCS are tracked in X1.5)"
         )));
     }
     Ok(url.to_owned())
@@ -375,7 +438,9 @@ mod tests {
         write_parquet(&dir, "a.parquet", 0, 10);
         std::fs::write(dir.join("notes.txt"), "not data").unwrap();
 
-        let units = list_work_units(dir.to_str().unwrap(), &["parquet"]).unwrap();
+        let units = list_work_units(dir.to_str().unwrap(), &["parquet"])
+            .await
+            .unwrap();
         assert_eq!(units.len(), 2, "non-matching extensions excluded");
         assert!(units[0].url.ends_with("a.parquet"), "deterministic order");
         assert!(units[1].url.ends_with("b.parquet"));
@@ -403,11 +468,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkpoint_enumeration_is_local_only_for_now() {
-        let Err(error) = list_work_units("s3://bucket/prefix/", &["parquet"]) else {
-            panic!("expected an error for remote enumeration");
+    async fn checkpoint_enumeration_rejects_unsupported_schemes() {
+        let Err(error) = list_work_units("az://container/prefix/", &["parquet"]).await else {
+            panic!("expected an error for az:// enumeration");
         };
-        assert!(error.to_string().contains("P1.1"), "{error}");
+        assert!(error.to_string().contains("X1.5"), "{error}");
     }
 
     /// L2 test (ADR 0005): the real S3 code path against MinIO. Guarded by
@@ -425,5 +490,39 @@ mod tests {
             rows += batch.num_rows();
         }
         assert!(rows > 0, "expected rows from {url}");
+    }
+
+    /// L2 test (ADR 0005): checkpointed enumeration against MinIO — the
+    /// listing yields identity (key, size, last-modified) and opening one
+    /// enumerated unit streams only that unit. Guarded like the test above.
+    #[tokio::test]
+    async fn enumerates_work_units_from_s3_compatible_store() {
+        let Ok(url) = std::env::var("PRAMEN_TEST_S3_URL") else {
+            eprintln!("skipping: PRAMEN_TEST_S3_URL not set");
+            return;
+        };
+        let units = list_work_units(&url, &["parquet"]).await.unwrap();
+        assert!(!units.is_empty(), "expected work units under {url}");
+        for unit in &units {
+            assert!(unit.url.starts_with("s3://"), "{}", unit.url);
+            assert!(unit.size > 0);
+            assert!(unit.modified_millis > 0, "listing carries last-modified");
+        }
+        let mut sorted = units.clone();
+        sorted.sort_by(|a, b| a.url.cmp(&b.url));
+        assert_eq!(
+            units.iter().map(|u| &u.url).collect::<Vec<_>>(),
+            sorted.iter().map(|u| &u.url).collect::<Vec<_>>(),
+            "deterministic order"
+        );
+
+        let mut source = ParquetSource::open_files(vec![units[0].url.clone()], 64 << 20, 128)
+            .await
+            .unwrap();
+        let mut rows = 0;
+        while let Some(batch) = source.next_batch().await.unwrap() {
+            rows += batch.num_rows();
+        }
+        assert!(rows > 0, "expected rows from {}", units[0].url);
     }
 }

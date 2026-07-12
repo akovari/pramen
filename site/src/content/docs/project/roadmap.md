@@ -19,7 +19,10 @@ This page is the honest summary.
   backpressure, and Ctrl-C safety.
 - **Checkpointed incremental runs**: file-granular work units on a
   crash-safe append-only store; replaying a finished run loads nothing,
-  a grown directory loads only new files (ADR 0006).
+  a grown directory loads only new files (ADR 0006). Works on local
+  directories and `s3://` prefixes alike — S3 unit identity (key, size,
+  last-modified) comes from a single `LIST` request, MinIO-verified end
+  to end.
 - **Upsert sink mode**: stage + `ON CONFLICT` merge on declared keys;
   replays are idempotent, within-run duplicates collapse
   deterministically (last write wins). The at-least-once contract is
@@ -80,8 +83,7 @@ This page is the honest summary.
 
 - Bedrock and OpenAI batch adapters (the cloud legs of P1.8; the batch
   operator, ledger reconciliation, and budgets are already live).
-- Remote work-unit enumeration for checkpointed `s3://` sources (P1.1
-  remainder); review-queue routing (X1.6).
+- Review-queue routing (X1.6).
 - The model quality-cost frontier table (S2.2 remainder): the corpus and
   `ai evaluate` harness are live; the pinned model choice per tier needs
   runs against real Bedrock models and a local vLLM.

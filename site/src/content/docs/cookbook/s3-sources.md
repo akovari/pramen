@@ -58,11 +58,36 @@ That number is a measured local run: four Parquet files (200k rows)
 streamed out of MinIO, filtered in SQL, and loaded into PostgreSQL in one
 transaction.
 
+## Incremental (checkpointed) S3 runs
+
+Checkpointed runs work on `s3://` prefixes exactly as on local
+directories: set `runtime.checkpoint` and each object becomes a work
+unit whose identity (key, size, last-modified) comes from a single
+`LIST` request — no per-object round trips. A replay loads nothing; a
+grown prefix loads only the new objects:
+
+```console
+$ pramen run s3-tickets.yaml
+checkpoint store consulted total_units=2 pending_units=2
+run complete: 20000 rows in / 16000 rows out in 844.54ms
+
+$ pramen run s3-tickets.yaml
+nothing to do: all 2 work unit(s) under the source are already completed in the checkpoint store
+
+$ # a third object lands under the prefix
+$ pramen run s3-tickets.yaml
+checkpoint store consulted total_units=3 pending_units=1
+run complete: 10000 rows in / 8000 rows out in 626.99ms
+```
+
+(Measured against MinIO; the target table ended at exactly the sum of
+all three objects' filtered rows, zero duplicates.) Objects on S3 are
+immutable and their last-modified only changes on overwrite, so an
+overwritten object is correctly treated as new work (ADR 0006).
+
 ## Current limits
 
 - Azure Blob and GCS are tracked in X1.5; using an `az://` or `gs://` URL
   fails at plan time with that pointer.
-- Checkpointed (incremental) runs currently enumerate local sources only;
-  remote work-unit enumeration is the remainder of P1.1. An `s3://` source
-  with `runtime.checkpoint` set fails at plan time rather than silently
-  running without resumability.
+- Prefix listing is single-level (matching DataFusion's scan): objects in
+  nested "subdirectories" of the prefix are not enumerated.

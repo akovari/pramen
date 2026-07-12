@@ -78,7 +78,10 @@ End-to-end verified: run → replay (`nothing to do`, 0 rows) → add one file
 
 - Multi-process execution needs real leases: revisit claims (lease expiry,
   fencing tokens) and move to the shared Postgres backend (X1.8).
-- Sources without stable mtime (some object stores) — switch the identity
-  component to etag/version ID when remote enumeration lands (P1.1).
+- Sources without stable mtime — S3 enumeration landed (P1.1) using
+  last-modified from the listing, which S3 keeps stable per object
+  version, so size+mtime identity holds there; switch the identity
+  component to etag/version ID if a store without that guarantee is
+  added.
 - Sub-file splits (huge single files) — extend `WorkUnit` with a split
   field; the key derivation already leaves room.

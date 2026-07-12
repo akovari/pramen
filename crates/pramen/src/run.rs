@@ -88,7 +88,7 @@ async fn execute_async(spec: &PipelineSpec, smoke: Option<SmokeOptions>) -> Resu
         Some(_) if smoke.is_some() => None,
         Some(config) => {
             let mut store = open_checkpoint_store(&config.url)?;
-            let units = enumerate_units(spec)?;
+            let units = enumerate_units(spec).await?;
             let total = units.len();
             let pipeline = &spec.metadata.name;
             let mut pending: Vec<(WorkUnit, String)> = Vec::new();
@@ -238,14 +238,16 @@ fn open_checkpoint_store(url: &str) -> Result<FileCheckpointStore, String> {
     FileCheckpointStore::open(std::path::Path::new(path)).map_err(|error| error.to_string())
 }
 
-/// Enumerate the source into checkpointable work units.
-fn enumerate_units(spec: &PipelineSpec) -> Result<Vec<WorkUnit>, String> {
+/// Enumerate the source into checkpointable work units (local paths,
+/// `file://`, or `s3://`).
+async fn enumerate_units(spec: &PipelineSpec) -> Result<Vec<WorkUnit>, String> {
     let SourceSpec::ObjectStore { url, format } = &spec.spec.source;
     let extensions: &[&str] = match format {
         FormatSpec::Parquet => &["parquet"],
         FormatSpec::Ndjson => &["ndjson", "jsonl", "json"],
     };
     pramen_io::list_work_units(url, extensions)
+        .await
         .map_err(|error| format!("checkpoint enumeration: {error}"))
 }
 

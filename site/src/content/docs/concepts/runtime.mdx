@@ -106,7 +106,9 @@ that survives `kill -9` mid-append (a torn final record is detected and
 discarded; corruption anywhere else fails loudly instead of losing data).
 
 The practical effect: re-running a finished pipeline does nothing, and a
-run over a grown directory loads only the new files.
+run over a grown directory loads only the new files. This works the same
+for local directories and `s3://` prefixes — S3 unit identity (key,
+size, last-modified) comes from a single `LIST` request per run.
 
 ```yaml
 runtime:

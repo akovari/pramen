@@ -121,7 +121,8 @@ Early implementation; no stable public API yet. What runs today:
   (see [examples/local-parquet-to-postgres.yaml](examples/local-parquet-to-postgres.yaml));
 - checkpointed incremental runs (ADR 0006): file-granular work units on a
   crash-safe append-only store — replaying a finished run loads nothing, a
-  grown directory loads only new files;
+  grown directory (or `s3://` prefix — unit identity from a single `LIST`,
+  MinIO-verified) loads only new files;
 - `upsert` sink mode: stage + `ON CONFLICT` merge on declared keys, so
   replays are idempotent — the at-least-once contract is pinned by tests
   on both sides (append duplicates, upsert does not);
