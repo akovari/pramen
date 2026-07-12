@@ -18,6 +18,8 @@ reqwest = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Evaluation corpora are versioned YAML documents.
+serde_yaml_ng = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 # `time` for the provider-batch poll interval.

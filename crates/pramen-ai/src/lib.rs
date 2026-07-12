@@ -5,16 +5,19 @@
 //! - [`workkey`]: the content-addressed identity of a unit of semantic work;
 //! - [`ledger`]: the durable SQLite (WAL) inference ledger — completed work
 //!   is recorded before use and reused on replay, never re-billed;
-//! - [`provider`]: the provider abstraction with mock and OpenAI-compatible
-//!   adapters (Bedrock arrives with P1.7);
+//! - [`provider`]: the provider abstraction with mock, OpenAI-compatible,
+//!   and Bedrock Converse adapters, plus the provider-batch surface;
 //! - [`schema`]: JSON Schema generation from declared output fields and
 //!   strict typed validation of model output;
 //! - [`budget`]: token budgets enforced *before* dispatch;
 //! - [`operator`]: the `ai.extract` / `ai.classify` transform that plugs
-//!   into the [`pramen_core::runtime`] dataflow.
+//!   into the [`pramen_core::runtime`] dataflow;
+//! - [`eval`]: golden-corpus evaluation — quality, cost, and latency of a
+//!   model on a versioned labelled corpus (`pramen ai evaluate`).
 
 pub mod budget;
 pub mod error;
+pub mod eval;
 pub mod ledger;
 pub mod operator;
 pub mod provider;

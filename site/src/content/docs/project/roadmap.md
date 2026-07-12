@@ -42,6 +42,11 @@ This page is the honest summary.
   submission reconciles on restart by job and item id instead of
   resubmitting — pinned by tests asserting zero re-billing. Exercised
   end to end against the batch-capable `mock` provider.
+- **Golden-corpus evaluation** (`pramen ai evaluate`): a versioned,
+  520-item labelled support-ticket corpus with weighted rubrics, run
+  through the same provider adapters as pipelines; reports schema-valid
+  rate, per-field accuracy, macro-F1, a weighted score, tokens, cost, and
+  latency percentiles into a timestamped, diffable results directory.
 - **Runtime guarantees**: commit-safety on failure (no partial loads),
   first-failure error attribution, prompt cooperative shutdown — all
   covered by behavioral tests.
@@ -60,10 +65,10 @@ This page is the honest summary.
   operator, ledger reconciliation, and budgets are already live).
 - Remote work-unit enumeration for checkpointed `s3://` sources (P1.1
   remainder); review-queue routing (X1.6).
-- The golden evaluation corpus and quality-cost frontier (S2.2), runnable
-  against local models first.
-- `run --smoke`, `ai evaluate`, and the measured ten-minute quickstart
-  (P1.16–P1.18).
+- The model quality-cost frontier table (S2.2 remainder): the corpus and
+  `ai evaluate` harness are live; the pinned model choice per tier needs
+  runs against real Bedrock models and a local vLLM.
+- `run --smoke` and the measured ten-minute quickstart (P1.16, P1.18).
 - Fault-injection and benchmark suites (P1.19–P1.20).
 
 ## After v1

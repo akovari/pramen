@@ -76,5 +76,48 @@ Show the inference ledger's work-item counts by state (pending, submitted,
 completed, failed). Defaults to `$PRAMEN_LEDGER_PATH` or
 `.pramen/ledger.sqlite`.
 
-Planned subcommands: `ai evaluate` (golden-corpus metrics), `ai review`
-(review-queue workflow).
+## `pramen ai evaluate`
+
+Measure a model's quality, cost, and latency on a versioned golden corpus
+— through exactly the provider adapters the pipeline uses, so measured
+quality transfers. Results land in a timestamped directory
+(`report.json` + per-item `items.jsonl`), making quality regressions
+across prompt or model revisions diffable artifacts.
+
+```console
+$ pramen ai evaluate --input-price 0.25 --output-price 1.25
+corpus: support-tickets v1 (520 items)
+provider/model: mock/mock-1
+schema-valid: 520/520 (100.0%)
+field              weight  accuracy  macro-F1
+category              3.0     0.000     0.000
+priority              2.0     0.000     0.000
+product               1.0     0.000         -
+requires_review       1.0     0.492         -
+weighted score: 0.070
+tokens: 58335 in / 13280 out (~$0.0312)
+latency: p50 0.0 ms, p95 0.1 ms
+results: .pramen/eval/20260712T075538Z-mock-mock-1
+```
+
+The mock provider fabricates schema-perfect but semantically random
+output, so its scores double as a sanity floor: 100% schema-valid,
+near-zero accuracy (booleans land near coin-flip). A real model runs
+through `--provider openai-compat --endpoint http://localhost:11434/v1
+--model <name>` (Ollama, vLLM, llama.cpp) or `--provider bedrock`.
+
+Flags: `--corpus` (default `corpora/support-tickets.v1.yaml`),
+`--provider` (`mock`, `openai-compat`, `bedrock`; default `mock`),
+`--model`, `--endpoint`, `--region`, `--limit N` (first N items only),
+`--out` (results root, default `.pramen/eval`), and
+`--input-price`/`--output-price` (USD per million tokens, adds the cost
+estimate). Scoring reports the schema-valid rate, per-field exact-match
+accuracy, macro-F1 for string fields, one rubric-weighted overall score,
+token totals, and latency percentiles. Evaluations bypass the ledger by
+design: they measure the model, so nothing is reused or recorded.
+
+The checked-in corpus is 520 synthetic support tickets, labelled by
+construction and regenerable with
+`cargo run -p pramen-ai --example gen_corpus`.
+
+Planned subcommands: `ai review` (review-queue workflow).

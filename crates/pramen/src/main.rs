@@ -2,8 +2,10 @@
 //!
 //! v1 surface: `validate`, `explain`, `run`, `ai`. Pipelines may combine
 //! deterministic SQL steps with governed semantic transforms backed by the
-//! durable inference ledger (`pramen ai status` inspects it).
+//! durable inference ledger (`pramen ai status` inspects it;
+//! `pramen ai evaluate` measures model quality and cost on a golden corpus).
 
+mod evaluate;
 mod run;
 
 use clap::{Parser, Subcommand};
@@ -84,6 +86,36 @@ enum AiCommand {
         #[arg(long)]
         ledger: Option<PathBuf>,
     },
+    /// Evaluate a model on a golden corpus; write a timestamped report.
+    Evaluate {
+        /// Corpus YAML path.
+        #[arg(long, default_value = "corpora/support-tickets.v1.yaml")]
+        corpus: PathBuf,
+        /// Provider adapter: mock, openai-compat, or bedrock.
+        #[arg(long, default_value = "mock")]
+        provider: String,
+        /// Model identifier.
+        #[arg(long, default_value = "mock-1")]
+        model: String,
+        /// Endpoint (required for openai-compat, e.g. http://localhost:11434/v1).
+        #[arg(long)]
+        endpoint: Option<String>,
+        /// Provider region pin (bedrock).
+        #[arg(long)]
+        region: Option<String>,
+        /// Evaluate only the first N items.
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Results root directory; each run writes a fresh subdirectory.
+        #[arg(long, default_value = ".pramen/eval")]
+        out: PathBuf,
+        /// USD per million input tokens (adds a cost estimate).
+        #[arg(long)]
+        input_price: Option<f64>,
+        /// USD per million output tokens.
+        #[arg(long)]
+        output_price: Option<f64>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -133,6 +165,39 @@ fn main() -> ExitCode {
         Command::Ai {
             command: AiCommand::Status { ledger },
         } => ai_status(ledger),
+        Command::Ai {
+            command:
+                AiCommand::Evaluate {
+                    corpus,
+                    provider,
+                    model,
+                    endpoint,
+                    region,
+                    limit,
+                    out,
+                    input_price,
+                    output_price,
+                },
+        } => {
+            let args = evaluate::EvaluateArgs {
+                corpus,
+                provider,
+                model,
+                endpoint,
+                region,
+                limit,
+                out,
+                input_price,
+                output_price,
+            };
+            match evaluate::execute(&args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("pramen: ai evaluate failed: {message}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
     }
 }
 

@@ -244,7 +244,13 @@ async fn plan_semantic(
     Ok((ai.id.clone(), Box::new(transform) as Box<dyn Transform>))
 }
 
-async fn plan_provider(transform_id: &str, model: &ModelSpec) -> Result<Arc<dyn Provider>, String> {
+/// Resolve a model declaration to a provider adapter (shared with
+/// `ai evaluate`, which measures models through the same adapters the
+/// pipeline uses).
+pub(crate) async fn plan_provider(
+    transform_id: &str,
+    model: &ModelSpec,
+) -> Result<Arc<dyn Provider>, String> {
     match model.provider.as_str() {
         "mock" => Ok(Arc::new(MockProvider::new())),
         "openai-compat" => {

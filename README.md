@@ -141,14 +141,18 @@ Early implementation; no stable public API yet. What runs today:
   before results are awaited, so a crash after submission reconciles on
   restart instead of resubmitting — submitted work is never billed twice;
   see [examples/local-tickets-ai-classify-batch.yaml](examples/local-tickets-ai-classify-batch.yaml);
+- `pramen ai evaluate` measures model quality, cost, and latency on the
+  versioned 520-item golden support-ticket corpus
+  ([corpora/](corpora/)), through the same provider adapters pipelines
+  use, into timestamped diffable reports;
 - the riskiest boundaries are spike-validated with measured results in
   [docs/spikes/](docs/spikes/): durable SQLite inference ledger with 100%
   result reuse and crash recovery (S1.1), bounded-memory Parquet + SQL at
   ~3M rows/s (S1.2), and native binary `COPY` at 3.1x the `psql \copy`
   baseline (S1.3).
 
-The Bedrock/OpenAI batch adapters and the golden evaluation corpus are
-next on the [Phase 1 workstreams](docs/implementation-plan.md).
+The Bedrock/OpenAI batch adapters and the model quality-cost frontier
+table are next on the [Phase 1 workstreams](docs/implementation-plan.md).
 
 Read the [product and architecture direction](docs/architecture.md) for the
 competitive position, proposed runtime, WASM ABI, connector strategy, delivery
@@ -199,10 +203,10 @@ unblocks):
 
 1. the Bedrock/OpenAI batch adapters behind the now-live batch operator
    (P1.8 remainder), then the S2.1 spike numbers on real Bedrock;
-2. the golden evaluation corpus and model quality-cost frontier (S2.2),
-   against local models first;
-3. `run --smoke`, `ai evaluate`, and the measured ten-minute quickstart
-   (P1.16–P1.18);
+2. the model quality-cost frontier table (S2.2 remainder — the corpus
+   and `ai evaluate` harness are live; runs against real Bedrock models
+   and a local vLLM remain);
+3. `run --smoke` and the measured ten-minute quickstart (P1.16, P1.18);
 4. fault-injection and benchmark suites (P1.19–P1.20);
 5. the WASM WIT component round-trip spike, gating the extensibility
    milestone, not v1 (S1.4).
