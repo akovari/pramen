@@ -47,6 +47,8 @@ pub fn execute(args: &EvaluateArgs) -> Result<(), String> {
             model: args.model.clone(),
             region: args.region.clone(),
             endpoint: args.endpoint.clone(),
+            // Evaluation always measures online round trips.
+            batch: None,
         };
         let provider = crate::run::plan_provider("ai evaluate", &model).await?;
         eval::run_eval(

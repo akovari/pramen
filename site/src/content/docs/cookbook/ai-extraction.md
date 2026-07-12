@@ -130,8 +130,14 @@ Batch execution requires a batch-capable provider. `mock` implements it
 for offline testing, and `openai-compat` implements it via the OpenAI
 Files + Batches APIs — hosted OpenAI supports these; most self-hosted
 servers (Ollama, plain vLLM) do not and fail submission with a typed
-error rather than silently queuing. The Bedrock batch adapter is the
-remaining cloud leg of P1.8.
+error rather than silently queuing. `bedrock` implements it via model
+invocation jobs: declare a `batch: { roleArn, s3 }` block on the model
+and the adapter stages JSONL inputs plus a `keys.jsonl` companion under
+the prefix, submits one job, polls, and joins results back by work key
+(even when the service rewrites record ids — a hash fallback is staged).
+Live confirmation against real Bedrock and the S2.1 crash/reconcile
+numbers need AWS credentials; the adapter is L2-tested offline against
+MinIO staging and a control-plane protocol stub.
 
 ## Inspect the ledger
 

@@ -500,6 +500,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-bedrock"
+version = "1.130.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "883f0f0b2014a0bb59b6bfce8265a6ca6dc7e849d09314124f94a347b9d9e9f5"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http 0.2.12",
+ "http 1.4.2",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-bedrockruntime"
 version = "1.124.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3500,8 +3524,11 @@ dependencies = [
  "arrow",
  "async-trait",
  "aws-config",
+ "aws-sdk-bedrock",
  "aws-sdk-bedrockruntime",
  "criterion",
+ "futures",
+ "object_store",
  "pramen-core",
  "pramen-testkit",
  "reqwest 0.12.28",
@@ -4468,7 +4495,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

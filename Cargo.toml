@@ -28,6 +28,7 @@ async-trait = "0.1"
 # hyper 0.14 + rustls 0.21 stack (RUSTSEC-2026-0098/0099/0104); the
 # `default-https-client` stack is rustls 0.23.
 aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio", "credentials-process", "sso"] }
+aws-sdk-bedrock = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-bedrockruntime = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 bytes = "1"
 clap = { version = "4", features = ["derive", "env"] }

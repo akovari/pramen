@@ -31,6 +31,9 @@ transforms.
 | `model` | string | Provider-specific model identifier |
 | `region` | string? | Provider region pin |
 | `endpoint` | string? | Endpoint override (self-hosted / stubbed providers) |
+| `batch` | object? | Bedrock provider-batch only: `{ roleArn, s3 }` — an IAM role and `s3://` staging prefix for model invocation jobs. `openai-compat` batches through the provider's Files API and needs no `batch` block. |
+| `batch.roleArn` | string | IAM service role the job assumes to read/write staged objects |
+| `batch.s3` | string | `s3://` staging prefix (inputs and results land under this prefix) |
 
 ## `spec.source`
 

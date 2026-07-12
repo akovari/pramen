@@ -389,14 +389,21 @@ pub(crate) async fn plan_provider(
                 api_key,
             )))
         }
-        "bedrock" => Ok(Arc::new(
-            BedrockProvider::new(
+        "bedrock" => {
+            let mut provider = BedrockProvider::new(
                 &model.model,
                 model.region.as_deref(),
                 model.endpoint.as_deref(),
             )
-            .await,
-        )),
+            .await;
+            if let Some(batch) = &model.batch {
+                provider = provider.with_batch(pramen_ai::provider::BedrockBatchConfig {
+                    role_arn: batch.role_arn.clone(),
+                    s3: batch.s3.clone(),
+                });
+            }
+            Ok(Arc::new(provider))
+        }
         other => Err(format!(
             "transform `{transform_id}`: unknown provider `{other}` \
              (available: mock, openai-compat, bedrock)"

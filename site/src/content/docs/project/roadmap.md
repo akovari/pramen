@@ -47,9 +47,10 @@ This page is the honest summary.
   resubmitting — pinned by tests asserting zero re-billing. Exercised
   end to end against the batch-capable `mock` provider. The
   `openai-compat` adapter implements the batch surface via the OpenAI
-  Files + Batches APIs (upload, submit, poll, JSONL result fetch by
-  work key), protocol-stub-tested offline; live confirmation against
-  hosted OpenAI needs an API key.
+  Files + Batches APIs (protocol-stub-tested offline), and `bedrock`
+  implements model invocation jobs with S3 staging plus a `keys.jsonl`
+  join fallback (L2-tested against MinIO and a control-plane stub;
+  live acceptance pending credentials).
 - **Golden-corpus evaluation** (`pramen ai evaluate`): a versioned,
   520-item labelled support-ticket corpus with weighted rubrics, run
   through the same provider adapters as pipelines; reports schema-valid
@@ -102,12 +103,12 @@ This page is the honest summary.
 
 ## In development (Phase 1)
 
-- The Bedrock batch adapter (the last cloud leg of P1.8; the batch
-  operator, ledger reconciliation, budgets, and the OpenAI batch
-  adapter are already live).
 - The model quality-cost frontier table (S2.2 remainder): the corpus and
   `ai evaluate` harness are live; the pinned model choice per tier needs
   runs against real Bedrock models and a local vLLM.
+- Live cloud acceptance legs: Bedrock Converse online (S1.1), Bedrock
+  batch crash/reconcile numbers (S2.1), and the 1M-record AWS run
+  (P2.1) — all blocked on credentials, not code.
 
 ## After v1
 

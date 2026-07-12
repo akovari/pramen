@@ -74,6 +74,24 @@ pub struct ModelSpec {
     /// Endpoint override, primarily for self-hosted or stubbed providers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
+    /// Provider-batch configuration. Required by `provider: bedrock` for
+    /// `execution: batch` (model invocation jobs stage through S3 under an
+    /// IAM role); `openai-compat` batches through the provider's Files API
+    /// and needs no configuration here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch: Option<ModelBatchSpec>,
+}
+
+/// S3-staged provider-batch configuration (Bedrock model invocation jobs).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModelBatchSpec {
+    /// ARN of the IAM service role the batch job assumes to read the
+    /// staged input and write results.
+    pub role_arn: String,
+    /// S3 staging prefix, e.g. `s3://my-bucket/pramen-batch/`. Inputs are
+    /// written under `input/`, the provider writes results under `output/`.
+    pub s3: String,
 }
 
 /// Record sources.

@@ -15,9 +15,9 @@ mod validate;
 pub use error::{SpecError, ValidationIssue};
 pub use types::{
     AiBreaker, AiBudget, AiOutput, AiTransform, AiValidation, ApiVersion, CheckpointSpec,
-    ExecutionMode, FieldSpec, FieldType, FormatSpec, InvalidPolicy, Kind, Metadata, ModelSpec,
-    PipelineSpec, PipelineSpecBody, RuntimeSpec, SinkMode, SinkSpec, SourceSpec, SqlTransform,
-    TransformSpec,
+    ExecutionMode, FieldSpec, FieldType, FormatSpec, InvalidPolicy, Kind, Metadata, ModelBatchSpec,
+    ModelSpec, PipelineSpec, PipelineSpecBody, RuntimeSpec, SinkMode, SinkSpec, SourceSpec,
+    SqlTransform, TransformSpec,
 };
 
 /// Parse a YAML document into a validated [`PipelineSpec`].

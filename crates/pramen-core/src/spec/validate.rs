@@ -54,6 +54,20 @@ fn validate_models(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
         if model.model.trim().is_empty() {
             push(&format!("{path}.model"), "must not be empty".to_owned());
         }
+        if let Some(batch) = &model.batch {
+            if batch.role_arn.trim().is_empty() {
+                push(
+                    &format!("{path}.batch.roleArn"),
+                    "must not be empty".to_owned(),
+                );
+            }
+            if !batch.s3.starts_with("s3://") {
+                push(
+                    &format!("{path}.batch.s3"),
+                    format!("`{}` must be an s3:// staging prefix", batch.s3),
+                );
+            }
+        }
     }
 }
 

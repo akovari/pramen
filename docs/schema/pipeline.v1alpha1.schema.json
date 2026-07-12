@@ -252,10 +252,40 @@
       ],
       "type": "object"
     },
+    "ModelBatchSpec": {
+      "additionalProperties": false,
+      "description": "S3-staged provider-batch configuration (Bedrock model invocation jobs).",
+      "properties": {
+        "roleArn": {
+          "description": "ARN of the IAM service role the batch job assumes to read the\nstaged input and write results.",
+          "type": "string"
+        },
+        "s3": {
+          "description": "S3 staging prefix, e.g. `s3://my-bucket/pramen-batch/`. Inputs are\nwritten under `input/`, the provider writes results under `output/`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "roleArn",
+        "s3"
+      ],
+      "type": "object"
+    },
     "ModelSpec": {
       "additionalProperties": false,
       "description": "A named model configuration.",
       "properties": {
+        "batch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelBatchSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Provider-batch configuration. Required by `provider: bedrock` for\n`execution: batch` (model invocation jobs stage through S3 under an\nIAM role); `openai-compat` batches through the provider's Files API\nand needs no configuration here."
+        },
         "endpoint": {
           "description": "Endpoint override, primarily for self-hosted or stubbed providers.",
           "type": [

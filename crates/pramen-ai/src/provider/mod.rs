@@ -8,14 +8,15 @@
 //! surface), [`OpenAiCompatProvider`] (vLLM, Ollama, llama.cpp, or any
 //! OpenAI-compatible endpoint; implements provider-batch via the OpenAI
 //! Files + Batches APIs where the server offers them), and
-//! [`BedrockProvider`] (Amazon Bedrock Converse; its provider-batch leg is
-//! the remainder of P1.8).
+//! [`BedrockProvider`] (Amazon Bedrock Converse online; provider-batch via
+//! S3-staged model invocation jobs when the model declares
+//! [`BedrockBatchConfig`]).
 
 mod bedrock;
 mod mock;
 mod openai_compat;
 
-pub use bedrock::BedrockProvider;
+pub use bedrock::{BedrockBatchConfig, BedrockProvider};
 pub use mock::MockProvider;
 pub use openai_compat::OpenAiCompatProvider;
 

@@ -142,7 +142,9 @@ Early implementation; no stable public API yet. What runs today:
   before results are awaited, so a crash after submission reconciles on
   restart instead of resubmitting — submitted work is never billed twice;
   the `openai-compat` adapter implements the batch surface via the OpenAI
-  Files + Batches APIs (protocol-stub-tested offline); see
+  Files + Batches APIs (protocol-stub-tested offline), and `bedrock`
+  implements model invocation jobs with S3 staging and a `keys.jsonl`
+  join fallback (L2-tested against MinIO and a control-plane stub); see
   [examples/local-tickets-ai-classify-batch.yaml](examples/local-tickets-ai-classify-batch.yaml);
 - `pramen ai evaluate` measures model quality, cost, and latency on the
   versioned 520-item golden support-ticket corpus
@@ -174,8 +176,10 @@ Early implementation; no stable public API yet. What runs today:
   extension on ~7× less CPU, governance fixed cost under 1 ms per
   semantic record ([docs/benchmarks/](docs/benchmarks/)).
 
-The Bedrock batch adapter and the model quality-cost frontier
-table are next on the [Phase 1 workstreams](docs/implementation-plan.md).
+The model quality-cost frontier table and live cloud acceptance legs
+(S1.1 Bedrock online, S2.1 batch crash/reconcile, P2.1 1M-record run)
+are next on the [Phase 1 workstreams](docs/implementation-plan.md) —
+all blocked on AWS credentials, not code.
 
 Read the [product and architecture direction](docs/architecture.md) for the
 competitive position, proposed runtime, WASM ABI, connector strategy, delivery
@@ -224,12 +228,13 @@ The remaining risk spikes and Phase 1 workstreams, in order (each is
 developed local-first per ADR 0005; cloud spend only confirms, never
 unblocks):
 
-1. the Bedrock batch adapter behind the now-live batch operator (the
-   P1.8 remainder — the OpenAI batch adapter is live and stub-tested),
-   then the S2.1 spike numbers on real Bedrock;
-2. the model quality-cost frontier table (S2.2 remainder — the corpus
-   and `ai evaluate` harness are live; runs against real Bedrock models
-   and a local vLLM remain).
+1. live cloud acceptance: S1.1 Bedrock Converse online, S2.1 batch
+   crash/reconcile numbers on real Bedrock (the adapters are
+   stub-tested offline), and the model quality-cost frontier table
+   (S2.2 — the corpus and `ai evaluate` harness are live; runs against
+   real Bedrock models and a local vLLM remain);
+2. the v0.1 release (P2.2): cargo-dist binaries, fresh-machine
+   quickstart validation, announce-readiness checklist.
 
 All four Phase 0 risk spikes are complete — most recently S1.4, which
 validated the Phase 2 WASM ABI: Arrow IPC through a WIT component at
