@@ -12,8 +12,8 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.1"
-# Flipped at the first public release (P2.2).
+version = "0.1.0"
+# First public release (P2.2).
 publish = false
 edition = "2024"
 rust-version = "1.88"

@@ -243,23 +243,16 @@ must be green before tagging.
 
 ## Immediate next step
 
-The remaining risk spikes and Phase 1 workstreams, in order (each is
-developed local-first per ADR 0005; cloud spend only confirms, never
-unblocks):
+v0.1 ships the offline-first Phase 1 verticals (deterministic ETL, governed
+AI, checkpointed ingestion). Remaining work is cloud acceptance only — it
+does not block the release:
 
-1. live cloud acceptance: S1.1 Bedrock Converse online, S2.1 batch
-   crash/reconcile numbers on real Bedrock (the adapters are
-   stub-tested offline), and the model quality-cost frontier table
-   (S2.2 — the corpus and `ai evaluate` harness are live; runs against
-   real Bedrock models and a local vLLM remain);
-2. the v0.1 release (P2.2): cargo-dist binaries, fresh-machine
-   quickstart validation, announce-readiness checklist.
+1. **Live cloud acceptance** (needs AWS credentials): S1.1 Bedrock Converse
+   online, S2.1 batch crash/reconcile on real Bedrock, S2.2 model
+   quality-cost frontier runs, and P2.1 1M-record S3 → Aurora acceptance.
+2. **Phase 2** (post-v0.1): Wasmtime integration (X1.1), Azure/GCS sources,
+   WASM transforms in the pipeline spec.
 
-All four Phase 0 risk spikes are complete — most recently S1.4, which
-validated the Phase 2 WASM ABI: Arrow IPC through a WIT component at
-~43 ns/row with deterministic memory/fuel/deadline limits
-([docs/spikes/s1-4-wasm-arrow.md](docs/spikes/s1-4-wasm-arrow.md)).
-
-The subsequent AWS acceptance test should compare client-streamed
-`COPY FROM STDIN` with Aurora's server-side S3 import where the source
-format and transformation permit it.
+See the [v0.1 release checklist](docs/release/v0.1-checklist.md) and
+[CONTRIBUTING.md](CONTRIBUTING.md) to build from source or install release
+binaries.

@@ -3503,7 +3503,7 @@ dependencies = [
 
 [[package]]
 name = "pramen"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "arrow",
  "async-trait",
@@ -3519,7 +3519,7 @@ dependencies = [
 
 [[package]]
 name = "pramen-ai"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "arrow",
  "async-trait",
@@ -3544,7 +3544,7 @@ dependencies = [
 
 [[package]]
 name = "pramen-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "arrow",
  "async-trait",
@@ -3565,7 +3565,7 @@ dependencies = [
 
 [[package]]
 name = "pramen-io"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "arrow",
  "async-trait",
@@ -3585,14 +3585,14 @@ dependencies = [
 
 [[package]]
 name = "pramen-testkit"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "pramen-wasm"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "proc-macro2"

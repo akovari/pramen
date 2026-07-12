@@ -15,6 +15,7 @@ snapshot orients a reader without leaving the file.
 | Phase 0 spikes | S1.1 offline legs done (ledger, crash recovery, protocol stubs; live Bedrock leg awaits credentials). S1.2 done: peak RSS flat (~184 MiB) while input doubles, ~3M rows/s. S1.3 done: binary COPY at 3.1x the `psql \copy` baseline, ADR 0001 confirmed. S1.4 done: WIT component round-trips Arrow IPC at ~43 ns/row (8k-row batches, ~2% of the load path), memory/fuel/deadline limits trap deterministically, fuel exactly reproducible — the Phase 2 ABI is viable. S2.1 and S2.2's cloud legs await credentials. |
 | Group F | F1, F2, F3 done (spec + validation + JSON Schema artifact; bounded-channel runner with commit-safe shutdown; log formats + metrics registry). F3 completed 2026-07-12: the JSONL event envelope is pinned by a snapshot test, and `run --otlp-endpoint` (or `PRAMEN_OTLP_ENDPOINT`) pushes the final run metrics to an OTLP collector over HTTP/protobuf — verified against a local collector stub. |
 | Group P1 | Three runnable verticals merged. Deterministic: `pramen run` executes Parquet/NDJSON → SQL → Postgres end to end, from local paths or `s3://` (MinIO-verified, 200k rows). Governed AI: `ai.extract`/`ai.classify` on the production SQLite ledger with pre-dispatch budgets, strict output validation, and `onInvalid` policies — verified end to end with full ledger reuse on replay. Checkpointed: file-granular work units on a crash-safe JSONL store (ADR 0006) — replay loads nothing, a grown directory loads only new files (verified end to end). In: P1.1 (local + S3 sources, including checkpointed S3 enumeration — unit identity from a single `LIST`, MinIO-verified incremental runs), P1.2 (NDJSON), P1.3 (checkpoint store + claim/complete), P1.4 (append + upsert COPY sink: stage + ON CONFLICT merge, idempotent replays, L2-tested), P1.5 (provider trait + capabilities), P1.6 (ledger + pinned canonicalization), P1.7 (Bedrock Converse adapter, L1 stub-tested; live acceptance pending credentials), P1.9 (OpenAI-compatible adapter), P1.10 (schema generation + validation), P1.11 (per-record budgets, output caps, `maxRunTokens` run ceiling, always-armed consecutive-invalid circuit breaker), P1.12 (sequential operator), P1.13 (per-batch SQL), P1.14 (delivery contract pinned by L2 tests: append duplicates on replay, upsert does not; crash-window e2e verified), P1.15 (validate/explain/run + `ai status`), P1.8 core (provider-batch operator: buffer, submit, poll, join; job ids durably recorded per item before awaiting; crash-after-submit reconciles by job and item id with zero re-billing, pinned by tests against the batch-capable mock — Bedrock/OpenAI batch adapters remain), P1.17 + S2.2 harness (`ai evaluate` over the versioned 520-item golden support-ticket corpus with weighted rubrics — schema-valid rate, per-field accuracy, macro-F1, weighted score, tokens/cost, latency percentiles, timestamped diffable results; the frontier table over real Bedrock/vLLM models remains), P1.16 (`run --smoke`: row cap, clamped semantic token ceiling, checkpointing bypassed; measured seconds on the example pipeline at zero cost), P1.18 (quickstart scripted in `scripts/quickstart.sh`, executed and timed in CI against the ten-minute bar — measured 2 s locally excluding build). P1.19 (fault-injection suite: typed `ProviderFault` taxonomy — timeout/throttled/transport/protocol/server — enforced deadline in the openai-compat adapter, six offline L1 fault tests, killed-backend-mid-COPY L2 test proving typed failure + untouched target; mid-run cancellation already pinned by runtime behavioral tests), P1.20 (benchmark suite v1: `scripts/bench.sh` over deterministic generated inputs — end-to-end 434k–590k rows/s into PostgreSQL at ~10 CPU-s/GiB and 376–531 MiB peak RSS vs DataFusion-direct and DuckDB baselines; Criterion micro-benches pin the COPY encoder at 5.6–6.5M rows/s and governance fixed cost under 1 ms/record; first report published in `docs/benchmarks/`), X1.6 pulled forward (review queue: durable routing for `onInvalid: review` in the ledger database — queued records withheld across replays with zero re-dispatch/re-billing; `pramen ai review list/export/accept/reject`; accepted corrections schema-validated and recorded as zero-token `human-review` ledger results, rejections permanent), P1.8 provider-batch adapters (OpenAI Files + Batches in `openai-compat`; Bedrock model invocation jobs with S3 staging, `keys.jsonl` join fallback, L2-tested against MinIO + control-plane stub — live S2.1 acceptance pending credentials). Open: S2.2 frontier runs. |
+| Group P2 | P2.2 done: workspace version `0.1.0`, cargo-dist plan verified, release checklist + `CONTRIBUTING.md` + `SECURITY.md`, release quickstart gate. Tag `v0.1.0` triggers binary publish. Open: P2.1 1M-record AWS acceptance (credentials). |
 | Phases 2–3 | Not started. |
 
 This plan turns the architecture into ordered, parallelizable tasks. Every
@@ -287,11 +288,12 @@ measured.
 - **P2.2** v0.1 release via cargo-dist; quickstart validated on a machine that
   has never seen the repo; announce-readiness checklist (README, examples,
   known limitations honestly listed).
-  *In progress 2026-07-12: `cargo-dist` plan verified (four tier-1
-  targets + installers); `scripts/release-quickstart.sh` and
-  `docs/release/v0.1-checklist.md` added; known limitations listed in
-  README. Remaining: tag `0.1.0`, release workflow publish, fresh-machine
-  validation with a downloaded binary.*
+  *Done 2026-07-12: workspace version `0.1.0`; `cargo-dist` plan verified
+  (four tier-1 targets + installers); `scripts/release-quickstart.sh` and
+  `docs/release/v0.1-checklist.md`; known limitations in README;
+  `CONTRIBUTING.md` and `SECURITY.md`; installation docs for release
+  binaries. Tag `v0.1.0` triggers the release workflow; fresh-machine
+  validation with a downloaded binary remains a post-tag smoke test.*
 
 Phase 1 exit = architecture §16 Phase 1 criterion, plus: coverage floor met,
 benchmark baselines locked as regression references.
@@ -365,8 +367,8 @@ benchmark baselines locked as regression references.
   regression is accepted deliberately.
 - Docs: every merged feature updates architecture.md or is explicitly
   declared an implementation detail.
-- Community (from v0.1): CONTRIBUTING, issue templates, security policy,
-  release cadence.
+- Community (from v0.1): CONTRIBUTING and security policy shipped; issue
+  templates and release cadence remain.
 
 ## 8. Confirmed plan parameters
 
