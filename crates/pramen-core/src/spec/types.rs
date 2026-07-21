@@ -218,6 +218,9 @@ pub struct AiTransform {
     /// How invocations are dispatched to the provider.
     #[serde(default)]
     pub execution: ExecutionMode,
+    /// Optional planning inputs for [`ExecutionMode::Auto`] (cost model).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch: Option<AutoDispatchHints>,
     /// Input column names passed to the model.
     pub inputs: Vec<String>,
     /// The fixed instruction; part of the work key.
@@ -239,13 +242,39 @@ pub struct AiTransform {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
-    /// Let the runtime choose between online and provider-batch execution.
+    /// Let the runtime choose between online and provider-batch execution
+    /// using the cost model when [`AiTransform::dispatch`] hints are set;
+    /// otherwise online.
     #[default]
     Auto,
     /// Always call the provider synchronously.
     Online,
     /// Always use the provider's asynchronous batch API.
     Batch,
+}
+
+/// Planning inputs that let `execution: auto` run the online-vs-batch cost
+/// model (architecture §18 RQ1). When either `expectedRecords` or
+/// `deadlineSeconds` is omitted, auto falls back to online.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutoDispatchHints {
+    /// Expected ledger-miss record count for this step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_records: Option<u64>,
+    /// Wall-clock deadline for completing the semantic step, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_seconds: Option<u64>,
+    /// Assumed input tokens per record (default 800 when planning).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens_per_record: Option<u64>,
+    /// Assumed output tokens per record (default 200 when planning).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens_per_record: Option<u64>,
+    /// Named rate card: `mock`, `openai-compat-stub`, or `bedrock-illustrative`.
+    /// Defaults from the provider adapter id when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_card: Option<String>,
 }
 
 /// The typed output contract of a semantic transform.

@@ -5,6 +5,7 @@
 //! durable inference ledger (`pramen ai status` inspects it;
 //! `pramen ai evaluate` measures model quality and cost on a golden corpus).
 
+mod dispatch_plan;
 mod evaluate;
 mod review;
 mod run;
@@ -143,6 +144,33 @@ enum AiCommand {
         /// (defaults to $PRAMEN_LEDGER_PATH or .pramen/ledger.sqlite).
         #[arg(long, global = true)]
         ledger: Option<String>,
+    },
+    /// Plan online vs provider-batch dispatch under a deadline (E2.1).
+    DispatchPlan {
+        /// Rate card: mock, openai-compat-stub, or bedrock-illustrative.
+        #[arg(long, default_value = "mock")]
+        rate_card: String,
+        /// Expected ledger-miss record count.
+        #[arg(long, default_value_t = 10_000)]
+        records: u64,
+        /// Wall-clock deadline in seconds.
+        #[arg(long, default_value_t = 3_600)]
+        deadline_seconds: u64,
+        /// Assumed input tokens per record.
+        #[arg(long, default_value_t = 800)]
+        input_tokens: u64,
+        /// Assumed output tokens per record.
+        #[arg(long, default_value_t = 200)]
+        output_tokens: u64,
+        /// Sweep volumes × deadlines × mock/stub rate cards.
+        #[arg(long)]
+        sweep: bool,
+        /// Write the sweep Markdown report to this path.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Emit a single plan as JSON.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -285,6 +313,37 @@ fn main() -> ExitCode {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(message) => {
                     eprintln!("pramen: ai review failed: {message}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Command::Ai {
+            command:
+                AiCommand::DispatchPlan {
+                    rate_card,
+                    records,
+                    deadline_seconds,
+                    input_tokens,
+                    output_tokens,
+                    sweep,
+                    out,
+                    json,
+                },
+        } => {
+            let args = dispatch_plan::DispatchPlanArgs {
+                rate_card,
+                records,
+                deadline_seconds,
+                input_tokens,
+                output_tokens,
+                sweep,
+                out,
+                json,
+            };
+            match dispatch_plan::execute(&args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("pramen: ai dispatch-plan failed: {message}");
                     ExitCode::FAILURE
                 }
             }

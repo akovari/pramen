@@ -379,6 +379,10 @@ benchmark baselines locked as regression references.
 - **E2.1** RQ1 dispatch policy: implement the cost model (online vs batch
   under deadline constraints); experiments across record volumes, deadlines,
   and providers; publish the measured frontier.
+  **Status: offline model + mock frontier done; live provider frontier
+  deferred to S2.2.** (`pramen_ai::dispatch`, `execution: auto` +
+  `dispatch` hints, `pramen ai dispatch-plan --sweep`,
+  `docs/research/e2-1-dispatch-frontier.md`.)
 - **E2.2** RQ2 memoization semantics: formalize the reuse contract; measure
   savings under crash/replay, incremental re-enrichment, duplicate-heavy
   workloads.

@@ -125,16 +125,24 @@ The workflow lives in the
 
 Both dispatch shapes run today, under identical governance:
 
-- **Online** (`execution: auto` or `online`): one provider call per
-  ledger miss, streamed row by row.
-- **Provider-batch** (`execution: batch`): ledger misses are collected
-  while input streams through, submitted as one asynchronous job, then
-  polled, fetched, validated, and joined back to the buffered rows. The
-  job id is recorded per item in the durable ledger *before* results are
-  awaited, so a run that crashes after submission **reconciles on restart
-  by job and item id instead of resubmitting** — submitted work is never
-  billed twice. Provider batch APIs (Bedrock, OpenAI, and compatible)
-  typically price at ~50% of online rates.
+- **Online** (`execution: online`, or `auto` without dispatch hints): one
+  provider call per ledger miss, streamed row by row.
+- **Provider-batch** (`execution: batch`, or `auto` when the cost model
+  recommends it): ledger misses are collected while input streams through,
+  submitted as one asynchronous job, then polled, fetched, validated, and
+  joined back to the buffered rows. The job id is recorded per item in the
+  durable ledger *before* results are awaited, so a run that crashes after
+  submission **reconciles on restart by job and item id instead of
+  resubmitting** — submitted work is never billed twice. Provider batch
+  APIs (Bedrock, OpenAI, and compatible) typically price at ~50% of online
+  rates.
+
+`execution: auto` runs the online-vs-batch cost model when the transform
+sets `dispatch.expectedRecords` and `dispatch.deadlineSeconds` (optional
+token and rate-card overrides). It picks the cheaper mode that still meets
+the deadline. Without those hints, auto stays online. Plan or sweep with
+`pramen ai dispatch-plan`; the published mock/stub frontier is in
+[Dispatch policy](/pramen/project/dispatch-policy/).
 
 The batch machinery — submission, polling, reconciliation, budgets — is
 fully exercised against the local batch-capable `mock` provider today;

@@ -16,10 +16,10 @@ mod validate;
 pub use component_ref::{ComponentRef, ComponentRefError, OciReference};
 pub use error::{SpecError, ValidationIssue};
 pub use types::{
-    AiBreaker, AiBudget, AiOutput, AiTransform, AiValidation, ApiVersion, CheckpointSpec,
-    ExecutionMode, FieldSpec, FieldType, FormatSpec, InvalidPolicy, Kind, Metadata, ModelBatchSpec,
-    ModelSpec, PipelineSpec, PipelineSpecBody, ResidencySpec, RuntimeSpec, SinkMode, SinkSpec,
-    SourceSpec, SqlTransform, TransformSpec, WasmLimitsSpec, WasmTransform,
+    AiBreaker, AiBudget, AiOutput, AiTransform, AiValidation, ApiVersion, AutoDispatchHints,
+    CheckpointSpec, ExecutionMode, FieldSpec, FieldType, FormatSpec, InvalidPolicy, Kind, Metadata,
+    ModelBatchSpec, ModelSpec, PipelineSpec, PipelineSpecBody, ResidencySpec, RuntimeSpec,
+    SinkMode, SinkSpec, SourceSpec, SqlTransform, TransformSpec, WasmLimitsSpec, WasmTransform,
 };
 
 /// Parse a YAML document into a validated [`PipelineSpec`].

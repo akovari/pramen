@@ -23,11 +23,35 @@ fn canonical_example_parses_and_validates() {
         panic!("expected ai.extract");
     };
     assert_eq!(ai.execution, ExecutionMode::Auto);
+    assert!(ai.dispatch.is_none());
     assert_eq!(ai.output.fields.len(), 2);
     assert_eq!(
         ai.output.fields[0].field_type.arrow_type(),
         arrow::datatypes::DataType::Utf8
     );
+}
+
+#[test]
+fn auto_dispatch_hints_parse() {
+    let yaml = EXAMPLE.replacen(
+        "      inputs: [description]\n",
+        concat!(
+            "      dispatch:\n",
+            "        expectedRecords: 10000\n",
+            "        deadlineSeconds: 3600\n",
+            "        rateCard: mock\n",
+            "      inputs: [description]\n",
+        ),
+        1,
+    );
+    let spec = parse(&yaml).unwrap();
+    let TransformSpec::AiExtract(ai) = &spec.spec.transforms[1] else {
+        panic!("expected ai.extract");
+    };
+    let hints = ai.dispatch.as_ref().expect("dispatch hints");
+    assert_eq!(hints.expected_records, Some(10_000));
+    assert_eq!(hints.deadline_seconds, Some(3_600));
+    assert_eq!(hints.rate_card.as_deref(), Some("mock"));
 }
 
 #[test]

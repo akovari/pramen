@@ -87,6 +87,56 @@
         }
       ]
     },
+    "AutoDispatchHints": {
+      "additionalProperties": false,
+      "description": "Planning inputs that let `execution: auto` run the online-vs-batch cost\nmodel (architecture §18 RQ1). When either `expectedRecords` or\n`deadlineSeconds` is omitted, auto falls back to online.",
+      "properties": {
+        "deadlineSeconds": {
+          "description": "Wall-clock deadline for completing the semantic step, in seconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "expectedRecords": {
+          "description": "Expected ledger-miss record count for this step.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "inputTokensPerRecord": {
+          "description": "Assumed input tokens per record (default 800 when planning).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "outputTokensPerRecord": {
+          "description": "Assumed output tokens per record (default 200 when planning).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rateCard": {
+          "description": "Named rate card: `mock`, `openai-compat-stub`, or `bedrock-illustrative`.\nDefaults from the provider adapter id when omitted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "CheckpointSpec": {
       "additionalProperties": false,
       "description": "Checkpoint storage location.",
@@ -106,7 +156,7 @@
       "oneOf": [
         {
           "const": "auto",
-          "description": "Let the runtime choose between online and provider-batch execution.",
+          "description": "Let the runtime choose between online and provider-batch execution\nusing the cost model when [`AiTransform::dispatch`] hints are set;\notherwise online.",
           "type": "string"
         },
         {
@@ -583,6 +633,17 @@
               ],
               "description": "Hard per-record token budgets."
             },
+            "dispatch": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AutoDispatchHints"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional planning inputs for [`ExecutionMode::Auto`] (cost model)."
+            },
             "execution": {
               "$ref": "#/$defs/ExecutionMode",
               "default": "auto",
@@ -655,6 +716,17 @@
               ],
               "description": "Hard per-record token budgets."
             },
+            "dispatch": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AutoDispatchHints"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional planning inputs for [`ExecutionMode::Auto`] (cost model)."
+            },
             "execution": {
               "$ref": "#/$defs/ExecutionMode",
               "default": "auto",
@@ -726,6 +798,17 @@
                 }
               ],
               "description": "Hard per-record token budgets."
+            },
+            "dispatch": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AutoDispatchHints"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional planning inputs for [`ExecutionMode::Auto`] (cost model)."
             },
             "execution": {
               "$ref": "#/$defs/ExecutionMode",

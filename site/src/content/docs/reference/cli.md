@@ -147,6 +147,31 @@ The checked-in corpus is 520 synthetic support tickets, labelled by
 construction and regenerable with
 `cargo run -p pramen-ai --example gen_corpus`.
 
+## `pramen ai dispatch-plan`
+
+Plan online vs provider-batch dispatch under a deadline using the E2.1
+cost model (same planner `execution: auto` uses when `dispatch` hints
+are set). Offline rate cards: `mock`, `openai-compat-stub`,
+`bedrock-illustrative` — **not live Bedrock quotes**.
+
+```console
+$ pramen ai dispatch-plan --rate-card mock --records 10000 --deadline-seconds 3600
+rate card: mock
+workload: 10000 records, 3600s deadline, 800/200 tokens in/out per record
+online:  $54.0000  ~16s  (deadline ok)
+batch:   $27.0000  ~72s  (deadline ok)
+recommended: batch
+reason: both meet deadline; batch cheaper ($27.0000 vs $54.0000)
+
+$ pramen ai dispatch-plan --sweep --out docs/research/e2-1-dispatch-frontier.md
+wrote docs/research/e2-1-dispatch-frontier.md (24 rows)
+```
+
+Flags: `--rate-card`, `--records`, `--deadline-seconds`,
+`--input-tokens`, `--output-tokens`, `--json` (single plan), `--sweep`
+(volumes × deadlines × mock/stub cards), `--out` (Markdown path for
+`--sweep`).
+
 ## `pramen ai review`
 
 The human side of `onInvalid: review`: records whose model output failed
