@@ -516,10 +516,8 @@ mod tests {
 
     #[test]
     fn open_location_selects_sqlite_path() {
-        let path = std::env::temp_dir().join(format!(
-            "pramen-ledger-loc-{}-.sqlite",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("pramen-ledger-loc-{}-.sqlite", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let ledger = Ledger::open_location(path.to_str().unwrap()).unwrap();
         assert!(matches!(ledger, Ledger::Sqlite(_)));

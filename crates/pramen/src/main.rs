@@ -278,9 +278,7 @@ fn main() -> ExitCode {
             let result = match command {
                 ReviewCommand::List => review::list(&location),
                 ReviewCommand::Export => review::export(&location),
-                ReviewCommand::Accept { key, output } => {
-                    review::accept(&location, &key, &output)
-                }
+                ReviewCommand::Accept { key, output } => review::accept(&location, &key, &output),
                 ReviewCommand::Reject { key } => review::reject(&location, &key),
             };
             match result {

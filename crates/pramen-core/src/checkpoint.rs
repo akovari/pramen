@@ -303,8 +303,7 @@ impl PostgresCheckpointStore {
     /// Returns [`CheckpointError::Backend`] when the DSN is unreachable or
     /// migration fails.
     pub async fn connect(dsn: &str) -> Result<Self, CheckpointError> {
-        let (client, connection) =
-            tokio_postgres::connect(dsn, tokio_postgres::NoTls).await?;
+        let (client, connection) = tokio_postgres::connect(dsn, tokio_postgres::NoTls).await?;
         tokio::spawn(async move {
             if let Err(error) = connection.await {
                 tracing::error!(%error, "postgres checkpoint connection closed");
@@ -332,8 +331,7 @@ impl PostgresCheckpointStore {
         let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new()?);
         let handle = runtime.handle().clone();
         let store = handle.block_on(async {
-            let (client, connection) =
-                tokio_postgres::connect(dsn, tokio_postgres::NoTls).await?;
+            let (client, connection) = tokio_postgres::connect(dsn, tokio_postgres::NoTls).await?;
             handle.spawn(async move {
                 if let Err(error) = connection.await {
                     tracing::error!(%error, "postgres checkpoint connection closed");
@@ -348,7 +346,6 @@ impl PostgresCheckpointStore {
             _runtime: Some(runtime),
         })
     }
-
 }
 
 impl CheckpointStore for PostgresCheckpointStore {
