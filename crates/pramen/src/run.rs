@@ -177,7 +177,7 @@ async fn execute_async(
         .unwrap_or_else(|| std::path::Path::new("."));
     let transforms =
         plan_transforms(spec, smoke.is_some(), pipeline_dir, &wasm_cache, &wasm_oci).await?;
-    let sink = plan_sink(spec).await?;
+    let sinks = plan_sinks(spec).await?;
 
     let capacity = usize::try_from(
         (runtime_spec.max_inflight_bytes / runtime_spec.target_batch_bytes.max(1)).clamp(1, 32),
@@ -200,7 +200,7 @@ async fn execute_async(
     let summary = runtime::run_pipeline(
         source,
         transforms,
-        sink,
+        sinks,
         RunOptions {
             channel_capacity: capacity,
         },
@@ -210,8 +210,8 @@ async fn execute_async(
     .await
     .map_err(|error| error.to_string())?;
 
-    // The sink transaction is committed; durably mark the consumed units
-    // complete (architecture §11 step 5). A crash inside this window
+    // All sinks have committed; durably mark the consumed units
+    // complete (architecture §11 step 5 / ADR 0007). A crash inside this window
     // duplicates those units on the next run — the documented at-least-once
     // window (ADR 0006).
     if let Some((mut store, keys)) = checkpoint {
@@ -331,8 +331,8 @@ async fn plan_source(
     }
 }
 
-/// A planned, named transform stage.
-type PlannedTransform = (String, Box<dyn Transform>);
+/// A planned, named transform stage: `(id, from, operator)`.
+type PlannedTransform = (String, String, Box<dyn Transform>);
 
 async fn plan_transforms(
     spec: &PipelineSpec,
@@ -342,16 +342,27 @@ async fn plan_transforms(
     wasm_oci: &pramen_wasm::OciLoadOptions,
 ) -> Result<Vec<PlannedTransform>, String> {
     let _ = smoke;
+    let edges = spec.spec.resolved_transform_edges();
     let mut planned = Vec::with_capacity(spec.spec.transforms.len());
-    for transform in &spec.spec.transforms {
+    for (transform, (_id, from)) in spec.spec.transforms.iter().zip(edges) {
         planned.push(match transform {
             TransformSpec::Sql(sql) => (
                 sql.id.clone(),
+                from,
                 Box::new(pramen_io::SqlTransform::new(&sql.query)) as Box<dyn Transform>,
             ),
-            TransformSpec::AiExtract(ai) => plan_semantic("ai.extract", ai, spec, smoke).await?,
-            TransformSpec::AiClassify(ai) => plan_semantic("ai.classify", ai, spec, smoke).await?,
-            TransformSpec::AiGenerate(ai) => plan_semantic("ai.generate", ai, spec, smoke).await?,
+            TransformSpec::AiExtract(ai) => {
+                let (id, op) = plan_semantic_pair("ai.extract", ai, spec, smoke).await?;
+                (id, from, op)
+            }
+            TransformSpec::AiClassify(ai) => {
+                let (id, op) = plan_semantic_pair("ai.classify", ai, spec, smoke).await?;
+                (id, from, op)
+            }
+            TransformSpec::AiGenerate(ai) => {
+                let (id, op) = plan_semantic_pair("ai.generate", ai, spec, smoke).await?;
+                (id, from, op)
+            }
             TransformSpec::Wasm(wasm) => {
                 let limits = pramen_wasm::InvocationLimits::from_spec(&wasm.limits);
                 let operator = pramen_wasm::WasmTransform::from_component(
@@ -363,7 +374,11 @@ async fn plan_transforms(
                 )
                 .await
                 .map_err(|error| format!("transform `{}`: {error}", wasm.id))?;
-                (wasm.id.clone(), Box::new(operator) as Box<dyn Transform>)
+                (
+                    wasm.id.clone(),
+                    from,
+                    Box::new(operator) as Box<dyn Transform>,
+                )
             }
         });
     }
@@ -373,12 +388,12 @@ async fn plan_transforms(
 /// Build one governed semantic transform: resolve the model reference to a
 /// provider adapter and open a handle to the shared inference ledger. A
 /// smoke run clamps the transform's run-token ceiling to the smoke cap.
-async fn plan_semantic(
+async fn plan_semantic_pair(
     operation: &str,
     ai: &AiTransform,
     spec: &PipelineSpec,
     smoke: bool,
-) -> Result<PlannedTransform, String> {
+) -> Result<(String, Box<dyn Transform>), String> {
     let model = spec.spec.models.get(&ai.model).ok_or_else(|| {
         format!(
             "transform `{}`: model `{}` is not declared under spec.models",
@@ -459,18 +474,34 @@ pub fn ledger_location() -> String {
     std::env::var(LEDGER_PATH_ENV).unwrap_or_else(|_| DEFAULT_LEDGER_PATH.to_owned())
 }
 
-async fn plan_sink(spec: &PipelineSpec) -> Result<Box<dyn Sink>, String> {
-    let SinkSpec::Postgres {
-        target,
-        mode,
-        keys,
-        dsn_env,
-    } = &spec.spec.sink;
-    let dsn = std::env::var(dsn_env).map_err(|_| {
-        format!("sink: environment variable `{dsn_env}` with the PostgreSQL DSN is not set")
-    })?;
-    let sink = pramen_io::PostgresCopySink::connect(&dsn, target, *mode, keys)
-        .await
-        .map_err(|error| format!("sink: {error}"))?;
-    Ok(Box::new(sink))
+async fn plan_sinks(
+    spec: &PipelineSpec,
+) -> Result<Vec<(String, String, Box<dyn Sink>)>, String> {
+    let mut planned = Vec::new();
+    for resolved in spec.spec.resolved_sinks() {
+        let SinkSpec::Postgres {
+            target,
+            mode,
+            keys,
+            dsn_env,
+        } = resolved.sink;
+        let dsn = std::env::var(dsn_env).map_err(|_| {
+            format!(
+                "sink `{}`: environment variable `{dsn_env}` with the PostgreSQL DSN is not set",
+                resolved.id
+            )
+        })?;
+        let sink = pramen_io::PostgresCopySink::connect(&dsn, target, *mode, keys)
+            .await
+            .map_err(|error| format!("sink `{}`: {error}", resolved.id))?;
+        planned.push((
+            resolved.id.to_owned(),
+            resolved.from.to_owned(),
+            Box::new(sink) as Box<dyn Sink>,
+        ));
+    }
+    if planned.is_empty() {
+        return Err("pipeline has no sinks".to_owned());
+    }
+    Ok(planned)
 }

@@ -5,6 +5,11 @@
 //! a fast source blocks on `send` when a downstream stage is slower, so
 //! memory in flight is bounded by channel capacity times batch size.
 //!
+//! Fan-out (ADR 0007) tees batches by cloning to every downstream channel.
+//! Fan-in is rejected at validation time. Sinks complete their write phase
+//! first; commits run only after every stage succeeds (all-sinks-then-
+//! checkpoint).
+//!
 //! Shutdown is cooperative, and failure ordering matters: a failing stage
 //! cancels the shared [`CancellationToken`] *before* its channel ends are
 //! dropped, so a downstream stage that sees its input close can reliably
@@ -18,6 +23,7 @@ pub use stages::{Sink, Source, StageError, Transform};
 
 use crate::observe::{MetricsSnapshot, RunMetrics};
 use arrow::record_batch::RecordBatch;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio_util::sync::CancellationToken;
@@ -63,6 +69,11 @@ pub struct RunSummary {
     pub metrics: MetricsSnapshot,
 }
 
+/// A planned transform: `(id, from, operator)`.
+pub type PlannedTransform = (String, String, Box<dyn Transform>);
+/// A planned sink: `(id, from, operator)`.
+pub type PlannedSink = (String, String, Box<dyn Sink>);
+
 fn batch_bytes(batch: &RecordBatch) -> u64 {
     batch.get_array_memory_size() as u64
 }
@@ -80,9 +91,22 @@ async fn cancellable<T>(
     }
 }
 
+async fn fanout_send(
+    txs: &[Sender<RecordBatch>],
+    batch: RecordBatch,
+    cancel: &CancellationToken,
+) -> Result<(), RunError> {
+    for tx in txs {
+        if cancellable(cancel, tx.send(batch.clone())).await?.is_err() {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
 async fn source_loop(
     source: &mut dyn Source,
-    tx: &Sender<RecordBatch>,
+    txs: &[Sender<RecordBatch>],
     metrics: &RunMetrics,
     cancel: &CancellationToken,
 ) -> Result<(), RunError> {
@@ -99,11 +123,7 @@ async fn source_loop(
             }
         };
         metrics.record_in(batch.num_rows() as u64, batch_bytes(&batch));
-        if cancellable(cancel, tx.send(batch)).await?.is_err() {
-            // Downstream closed: it failed (reported there) or the run is
-            // tearing down. Stop quietly either way.
-            return Ok(());
-        }
+        fanout_send(txs, batch, cancel).await?;
     }
 }
 
@@ -111,7 +131,7 @@ async fn transform_loop(
     stage_id: &str,
     transform: &mut dyn Transform,
     input: &mut Receiver<RecordBatch>,
-    tx: &Sender<RecordBatch>,
+    txs: &[Sender<RecordBatch>],
     cancel: &CancellationToken,
 ) -> Result<(), RunError> {
     let fail = |source| RunError::Stage {
@@ -126,13 +146,9 @@ async fn transform_loop(
             .await?
             .map_err(fail)?;
         for out in outputs {
-            if cancellable(cancel, tx.send(out)).await?.is_err() {
-                return Ok(());
-            }
+            fanout_send(txs, out, cancel).await?;
         }
     }
-    // Input closed. A failed upstream cancels before dropping its sender,
-    // so a clean close with a cancelled token means failure, not EOF.
     if cancel.is_cancelled() {
         return Err(RunError::Cancelled);
     }
@@ -140,21 +156,20 @@ async fn transform_loop(
         .await?
         .map_err(fail)?;
     for out in outputs {
-        if cancellable(cancel, tx.send(out)).await?.is_err() {
-            return Ok(());
-        }
+        fanout_send(txs, out, cancel).await?;
     }
     Ok(())
 }
 
-async fn sink_loop(
+async fn sink_write_loop(
+    stage_id: &str,
     sink: &mut dyn Sink,
     input: &mut Receiver<RecordBatch>,
     metrics: &RunMetrics,
     cancel: &CancellationToken,
 ) -> Result<(), RunError> {
     let fail = |source| RunError::Stage {
-        stage: "sink".to_owned(),
+        stage: stage_id.to_owned(),
         source,
     };
     loop {
@@ -167,19 +182,28 @@ async fn sink_loop(
             .map_err(fail)?;
         metrics.record_out(rows, bytes);
     }
-    // A commit must never make a failed run's partial output visible.
     if cancel.is_cancelled() {
         return Err(RunError::Cancelled);
     }
-    cancellable(cancel, sink.commit()).await?.map_err(fail)?;
     Ok(())
 }
 
-/// Execute a linear pipeline to completion.
+fn merge_outcome(outcome: &mut Result<(), RunError>, result: Result<(), RunError>) {
+    match (&*outcome, &result) {
+        (Ok(()) | Err(RunError::Cancelled), Err(error)) if !matches!(error, RunError::Cancelled) => {
+            *outcome = result;
+        }
+        (Ok(()), Err(RunError::Cancelled)) => *outcome = result,
+        _ => {}
+    }
+}
+
+/// Execute a pipeline graph to completion (linear or fan-out).
 ///
-/// Consumes the stages, wires them with bounded channels, runs each in its
-/// own task, and waits for the sink to commit. `cancel` may be triggered at
-/// any time to abort the run cooperatively.
+/// Each transform and sink names its upstream via `from` (`"source"` or a
+/// transform id). Fan-out tees batches to every downstream; validation must
+/// have rejected fan-in. Sink `commit` runs only after every write phase
+/// succeeds (ADR 0007).
 ///
 /// # Errors
 ///
@@ -187,73 +211,120 @@ async fn sink_loop(
 /// fired before completion, or [`RunError::Join`] if a stage panicked.
 pub async fn run_pipeline(
     mut source: Box<dyn Source>,
-    transforms: Vec<(String, Box<dyn Transform>)>,
-    mut sink: Box<dyn Sink>,
+    transforms: Vec<PlannedTransform>,
+    sinks: Vec<PlannedSink>,
     options: RunOptions,
     metrics: Arc<RunMetrics>,
     cancel: CancellationToken,
 ) -> Result<RunSummary, RunError> {
     let capacity = options.channel_capacity.max(1);
+
+    let mut out_txs: HashMap<String, Vec<Sender<RecordBatch>>> = HashMap::new();
+    let mut in_rxs: HashMap<String, Receiver<RecordBatch>> = HashMap::new();
+
+    for (id, from, _) in &transforms {
+        let (tx, rx) = channel(capacity);
+        out_txs.entry(from.clone()).or_default().push(tx);
+        in_rxs.insert(id.clone(), rx);
+    }
+    for (id, from, _) in &sinks {
+        let (tx, rx) = channel(capacity);
+        out_txs.entry(from.clone()).or_default().push(tx);
+        in_rxs.insert(id.clone(), rx);
+    }
+
+    let source_txs = out_txs.remove("source").unwrap_or_default();
     let mut tasks: tokio::task::JoinSet<Result<(), RunError>> = tokio::task::JoinSet::new();
 
-    let (source_tx, mut upstream_rx) = channel::<RecordBatch>(capacity);
     {
         let cancel = cancel.clone();
         let metrics = Arc::clone(&metrics);
         tasks.spawn(async move {
-            let result = source_loop(source.as_mut(), &source_tx, &metrics, &cancel).await;
+            let result = source_loop(source.as_mut(), &source_txs, &metrics, &cancel).await;
             if result.is_err() {
-                // Cancel before source_tx drops (at end of this block).
                 cancel.cancel();
             }
             result
         });
     }
 
-    for (stage_id, mut transform) in transforms {
-        let (tx, rx) = channel::<RecordBatch>(capacity);
-        let mut input = std::mem::replace(&mut upstream_rx, rx);
+    for (stage_id, _from, mut transform) in transforms {
+        let txs = out_txs.remove(&stage_id).unwrap_or_default();
+        let Some(mut input) = in_rxs.remove(&stage_id) else {
+            return Err(RunError::Join(format!(
+                "missing input channel for transform `{stage_id}`"
+            )));
+        };
         let cancel = cancel.clone();
         tasks.spawn(async move {
             let result =
-                transform_loop(&stage_id, transform.as_mut(), &mut input, &tx, &cancel).await;
+                transform_loop(&stage_id, transform.as_mut(), &mut input, &txs, &cancel).await;
             if result.is_err() {
-                // Cancel before tx and input drop (at end of this block).
                 cancel.cancel();
             }
             result
         });
     }
 
-    {
+    let mut sink_tasks: tokio::task::JoinSet<(String, Box<dyn Sink>, Result<(), RunError>)> =
+        tokio::task::JoinSet::new();
+    for (stage_id, _from, mut sink) in sinks {
+        let Some(mut input) = in_rxs.remove(&stage_id) else {
+            return Err(RunError::Join(format!(
+                "missing input channel for sink `{stage_id}`"
+            )));
+        };
         let cancel = cancel.clone();
         let metrics = Arc::clone(&metrics);
-        let mut input = upstream_rx;
-        tasks.spawn(async move {
-            let result = sink_loop(sink.as_mut(), &mut input, &metrics, &cancel).await;
+        sink_tasks.spawn(async move {
+            let result =
+                sink_write_loop(&stage_id, sink.as_mut(), &mut input, &metrics, &cancel).await;
             if result.is_err() {
                 cancel.cancel();
             }
-            result
+            (stage_id, sink, result)
         });
     }
 
-    // Collect every outcome; a concrete stage failure beats Cancelled so
-    // the user sees the root cause, not the teardown.
     let mut outcome: Result<(), RunError> = Ok(());
     while let Some(joined) = tasks.join_next().await {
         let result = match joined {
             Ok(result) => result,
             Err(join_error) => Err(RunError::Join(join_error.to_string())),
         };
-        match (&outcome, &result) {
-            (Ok(()) | Err(RunError::Cancelled), Err(error))
-                if !matches!(error, RunError::Cancelled) =>
-            {
-                outcome = result;
+        merge_outcome(&mut outcome, result);
+    }
+
+    let mut ready_sinks: Vec<(String, Box<dyn Sink>)> = Vec::new();
+    while let Some(joined) = sink_tasks.join_next().await {
+        match joined {
+            Ok((id, sink, result)) => {
+                let wrote_ok = result.is_ok();
+                merge_outcome(&mut outcome, result);
+                if wrote_ok {
+                    ready_sinks.push((id, sink));
+                }
             }
-            (Ok(()), Err(RunError::Cancelled)) => outcome = result,
-            _ => {}
+            Err(join_error) => {
+                merge_outcome(&mut outcome, Err(RunError::Join(join_error.to_string())));
+            }
+        }
+    }
+
+    if let Ok(()) = &outcome {
+        for (id, mut sink) in ready_sinks {
+            if cancel.is_cancelled() {
+                outcome = Err(RunError::Cancelled);
+                break;
+            }
+            if let Err(source) = sink.commit().await {
+                outcome = Err(RunError::Stage {
+                    stage: id,
+                    source,
+                });
+                cancel.cancel();
+                break;
+            }
         }
     }
 

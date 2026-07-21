@@ -60,7 +60,8 @@ This page is the honest summary. Workspace version: **0.2.0**.
   (`examples/external-wasm-guest/`); deploy artifacts + runbook
   ([Deploying on AWS](/pramen/cookbook/aws-deploy/)). Live AWS apply still
   needs credentials.
-- **Phase 3 product (E1)**: ADBC / Flight SQL sinks, fan-out DAGs,
+- **Phase 3 product (E1)**: **E1.3 fan-out done** (ADR 0007: `from` edges +
+  `sinks`, all-sinks-then-checkpoint). Still open: ADBC / Flight SQL sinks,
   connector SDK.
 - **Phase 3 research**: E2.1 offline dispatch model + mock frontier and
   E2.2 memoization contract/measurements are published under

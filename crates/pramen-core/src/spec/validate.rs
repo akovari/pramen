@@ -5,8 +5,10 @@
 
 use super::component_ref::{ComponentRef, ComponentRefError};
 use super::error::ValidationIssue;
-use super::types::{AiTransform, PipelineSpec, SinkMode, SinkSpec, SourceSpec, TransformSpec};
-use std::collections::BTreeSet;
+use super::types::{
+    AiTransform, PipelineSpec, SinkMode, SinkSpec, SourceSpec, TransformSpec, SOURCE_STAGE_ID,
+};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn validate(spec: &PipelineSpec) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
@@ -21,7 +23,8 @@ pub(super) fn validate(spec: &PipelineSpec) -> Vec<ValidationIssue> {
     validate_models(spec, &mut push);
     validate_source(spec, &mut push);
     validate_transforms(spec, &mut push);
-    validate_sink(&spec.spec.sink, &mut push);
+    validate_sinks(spec, &mut push);
+    validate_topology(spec, &mut push);
     validate_runtime(spec, &mut push);
     validate_residency(spec, &mut push);
 
@@ -259,7 +262,47 @@ fn validate_ai_transform(
     }
 }
 
-fn validate_sink(sink: &SinkSpec, push: &mut impl FnMut(&str, String)) {
+fn validate_sinks(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
+    let has_sink = spec.spec.sink.is_some();
+    let has_sinks = !spec.spec.sinks.is_empty();
+    match (has_sink, has_sinks) {
+        (false, false) => push(
+            "spec",
+            "must declare `sink` or a non-empty `sinks` list".to_owned(),
+        ),
+        (true, true) => push(
+            "spec",
+            "declare either `sink` or `sinks`, not both".to_owned(),
+        ),
+        (true, false) => {
+            if let Some(sink) = &spec.spec.sink {
+                validate_sink_body(sink, "spec.sink", push);
+            }
+        }
+        (false, true) => {
+            let mut seen_ids = BTreeSet::new();
+            for (index, bound) in spec.spec.sinks.iter().enumerate() {
+                let path = format!("spec.sinks[{index}]");
+                if bound.id.trim().is_empty() {
+                    push(&format!("{path}.id"), "must not be empty".to_owned());
+                } else if !seen_ids.insert(bound.id.as_str()) {
+                    push(
+                        &format!("{path}.id"),
+                        format!("duplicate id `{}`", bound.id),
+                    );
+                }
+                if let Some(from) = &bound.from
+                    && from.trim().is_empty()
+                {
+                    push(&format!("{path}.from"), "must not be empty when set".to_owned());
+                }
+                validate_sink_body(&bound.sink, &path, push);
+            }
+        }
+    }
+}
+
+fn validate_sink_body(sink: &SinkSpec, path: &str, push: &mut impl FnMut(&str, String)) {
     match sink {
         SinkSpec::Postgres {
             target,
@@ -270,34 +313,205 @@ fn validate_sink(sink: &SinkSpec, push: &mut impl FnMut(&str, String)) {
             let parts: Vec<&str> = target.split('.').collect();
             if parts.len() != 2 || parts.iter().any(|p| p.trim().is_empty()) {
                 push(
-                    "spec.sink.target",
+                    &format!("{path}.target"),
                     format!("`{target}` must be a qualified `schema.table` name"),
                 );
             }
             if dsn_env.trim().is_empty() {
-                push("spec.sink.dsnEnv", "must not be empty".to_owned());
+                push(&format!("{path}.dsnEnv"), "must not be empty".to_owned());
             }
             match mode {
                 SinkMode::Upsert if keys.is_empty() => push(
-                    "spec.sink.keys",
+                    &format!("{path}.keys"),
                     "mode `upsert` requires at least one merge-key column".to_owned(),
                 ),
                 SinkMode::Append if !keys.is_empty() => push(
-                    "spec.sink.keys",
+                    &format!("{path}.keys"),
                     "only meaningful with mode `upsert`".to_owned(),
                 ),
                 _ => {}
             }
-            let mut seen = std::collections::BTreeSet::new();
+            let mut seen = BTreeSet::new();
             for key in keys {
                 if key.trim().is_empty() {
-                    push("spec.sink.keys", "key columns must not be empty".to_owned());
+                    push(&format!("{path}.keys"), "key columns must not be empty".to_owned());
                 } else if !seen.insert(key) {
-                    push("spec.sink.keys", format!("duplicate key column `{key}`"));
+                    push(
+                        &format!("{path}.keys"),
+                        format!("duplicate key column `{key}`"),
+                    );
                 }
             }
         }
     }
+}
+
+fn validate_topology(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
+    // Skip detailed graph checks when sink declaration is already invalid.
+    if spec.spec.sink.is_some() == !spec.spec.sinks.is_empty() {
+        return;
+    }
+
+    let transform_edges = spec.spec.resolved_transform_edges();
+    let sinks = spec.spec.resolved_sinks();
+
+    let mut producers: BTreeSet<&str> = BTreeSet::new();
+    producers.insert(SOURCE_STAGE_ID);
+    for transform in &spec.spec.transforms {
+        producers.insert(transform.id());
+    }
+
+    // Incoming edge count (fan-in detection) and adjacency for reachability.
+    let mut incoming: BTreeMap<&str, u32> = BTreeMap::new();
+    let mut children: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+
+    for (index, (id, from)) in transform_edges.iter().enumerate() {
+        let path = format!("spec.transforms[{index}]");
+        if from.trim().is_empty() {
+            push(&format!("{path}.from"), "must not be empty".to_owned());
+            continue;
+        }
+        if !producers.contains(from.as_str()) {
+            push(
+                &format!("{path}.from"),
+                format!("unknown stage `{from}` (use `source` or a transform id)"),
+            );
+        }
+        if id == from {
+            push(
+                &format!("{path}.from"),
+                format!("stage `{id}` cannot depend on itself"),
+            );
+        }
+        *incoming.entry(id.as_str()).or_insert(0) += 1;
+        children.entry(from.as_str()).or_default().push(id.as_str());
+    }
+
+    for (index, resolved) in sinks.iter().enumerate() {
+        let path = if spec.spec.sinks.is_empty() {
+            "spec.sink".to_owned()
+        } else {
+            format!("spec.sinks[{index}]")
+        };
+        if resolved.from.trim().is_empty() {
+            push(&format!("{path}.from"), "must not be empty".to_owned());
+            continue;
+        }
+        if !producers.contains(resolved.from) {
+            push(
+                &format!("{path}.from"),
+                format!(
+                    "unknown stage `{}` (use `source` or a transform id)",
+                    resolved.from
+                ),
+            );
+        }
+        *incoming.entry(resolved.id).or_insert(0) += 1;
+        children
+            .entry(resolved.from)
+            .or_default()
+            .push(resolved.id);
+    }
+
+    for (node, count) in &incoming {
+        if *count > 1 {
+            push(
+                "spec",
+                format!(
+                    "fan-in is not supported in v1alpha1: stage `{node}` has {count} upstreams \
+                     (ADR 0007)"
+                ),
+            );
+        }
+    }
+
+    // Cycle detection among transforms (sinks have no outgoing edges).
+    let transform_ids: BTreeSet<&str> = spec.spec.transforms.iter().map(TransformSpec::id).collect();
+    let mut visiting = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    for id in &transform_ids {
+        if !visited.contains(id)
+            && dfs_cycle(id, &children, &transform_ids, &mut visiting, &mut visited)
+        {
+            push(
+                "spec.transforms",
+                format!("cycle detected involving transform `{id}`"),
+            );
+            break;
+        }
+    }
+
+    // Reachability from source.
+    let mut reachable = BTreeSet::new();
+    let mut stack = vec![SOURCE_STAGE_ID];
+    while let Some(node) = stack.pop() {
+        if !reachable.insert(node) {
+            continue;
+        }
+        if let Some(kids) = children.get(node) {
+            for kid in kids {
+                stack.push(kid);
+            }
+        }
+    }
+    for transform in &spec.spec.transforms {
+        if !reachable.contains(transform.id()) {
+            push(
+                "spec.transforms",
+                format!(
+                    "transform `{}` is not reachable from `source`",
+                    transform.id()
+                ),
+            );
+        }
+        if children
+            .get(transform.id())
+            .is_none_or(|kids| kids.is_empty())
+        {
+            push(
+                "spec.transforms",
+                format!(
+                    "transform `{}` has no downstream stage (fan-out leaf must be a sink)",
+                    transform.id()
+                ),
+            );
+        }
+    }
+    for resolved in &sinks {
+        if !reachable.contains(resolved.id) {
+            push(
+                "spec",
+                format!("sink `{}` is not reachable from `source`", resolved.id),
+            );
+        }
+    }
+}
+
+fn dfs_cycle<'a>(
+    node: &'a str,
+    children: &BTreeMap<&str, Vec<&'a str>>,
+    transform_ids: &BTreeSet<&str>,
+    visiting: &mut BTreeSet<&'a str>,
+    visited: &mut BTreeSet<&'a str>,
+) -> bool {
+    if visiting.contains(node) {
+        return true;
+    }
+    if visited.contains(node) {
+        return false;
+    }
+    visiting.insert(node);
+    if let Some(kids) = children.get(node) {
+        for kid in kids {
+            if transform_ids.contains(kid) && dfs_cycle(kid, children, transform_ids, visiting, visited)
+            {
+                return true;
+            }
+        }
+    }
+    visiting.remove(node);
+    visited.insert(node);
+    false
 }
 
 fn validate_runtime(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {

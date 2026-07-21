@@ -4,9 +4,9 @@
 //! errors), validation is semantic and reports every problem with a path,
 //! and the accepted surface is published as a generated JSON Schema.
 //!
-//! The v1alpha1 schema describes a linear pipeline — one source, an ordered
-//! list of transforms, one sink — while the internal plan remains free to
-//! become a DAG later without changing this surface.
+//! The v1alpha1 schema supports a linear pipeline by default (one source,
+//! ordered transforms, one sink) and additive fan-out via optional `from`
+//! edges and `spec.sinks` (ADR 0007). Fan-in is rejected.
 
 mod component_ref;
 mod error;
@@ -17,9 +17,10 @@ pub use component_ref::{ComponentRef, ComponentRefError, OciReference};
 pub use error::{SpecError, ValidationIssue};
 pub use types::{
     AiBreaker, AiBudget, AiOutput, AiTransform, AiValidation, ApiVersion, AutoDispatchHints,
-    CheckpointSpec, ExecutionMode, FieldSpec, FieldType, FormatSpec, InvalidPolicy, Kind, Metadata,
-    ModelBatchSpec, ModelSpec, PipelineSpec, PipelineSpecBody, ResidencySpec, RuntimeSpec,
-    SinkMode, SinkSpec, SourceSpec, SqlTransform, TransformSpec, WasmLimitsSpec, WasmTransform,
+    BoundSinkSpec, CheckpointSpec, ExecutionMode, FieldSpec, FieldType, FormatSpec, InvalidPolicy,
+    Kind, Metadata, ModelBatchSpec, ModelSpec, PipelineSpec, PipelineSpecBody, ResidencySpec,
+    ResolvedSink, RuntimeSpec, SinkMode, SinkSpec, SourceSpec, SqlTransform, TransformSpec,
+    WasmLimitsSpec, WasmTransform, SOURCE_STAGE_ID,
 };
 
 /// Parse a YAML document into a validated [`PipelineSpec`].

@@ -1,0 +1,35 @@
+# Fan-out to two PostgreSQL tables (E1.3 / ADR 0007).
+#
+# Both sinks receive the same projected batches. Commits happen only after
+# every sink finishes writing; then checkpoints may advance.
+#
+#   export PRAMEN_POSTGRES_DSN=postgres://postgres:...@localhost:5432/postgres
+#   pramen validate examples/local-fanout-two-sinks.yaml
+#   pramen run examples/local-fanout-two-sinks.yaml
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: local-fanout-two-sinks
+spec:
+  source:
+    type: object_store
+    url: /tmp/pramen-e2e-input
+    format:
+      type: parquet
+  transforms:
+    - id: project
+      type: sql
+      query: >
+        SELECT id, category, amount, amount * 1.21 AS amount_gross
+        FROM input
+        WHERE category <> 'epsilon'
+  sinks:
+    - id: primary
+      type: postgres
+      target: analytics.events
+      mode: append
+    - id: archive
+      from: project
+      type: postgres
+      target: analytics.events_archive
+      mode: append

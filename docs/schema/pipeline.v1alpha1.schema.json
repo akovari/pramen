@@ -137,6 +137,63 @@
       },
       "type": "object"
     },
+    "BoundSinkSpec": {
+      "description": "A sink binding with an optional upstream stage id.",
+      "oneOf": [
+        {
+          "description": "A PostgreSQL table loaded via native binary `COPY`.",
+          "properties": {
+            "dsnEnv": {
+              "default": "PRAMEN_POSTGRES_DSN",
+              "description": "Environment variable holding the connection string.\n\nConnection strings are secrets and never appear in the document.",
+              "type": "string"
+            },
+            "keys": {
+              "description": "Merge-key columns for `upsert` mode; the target needs a unique\nindex over exactly these columns. Must be empty for `append`.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "$ref": "#/$defs/SinkMode",
+              "default": "append",
+              "description": "Load semantics."
+            },
+            "target": {
+              "description": "Qualified table name, `schema.table`.",
+              "type": "string"
+            },
+            "type": {
+              "const": "postgres",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "target"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "from": {
+          "description": "Upstream stage id (`source` or a transform id). When omitted, defaults\nto the last transform, or `source` when there are no transforms.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Unique sink identifier within the pipeline.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
     "CheckpointSpec": {
       "additionalProperties": false,
       "description": "Checkpoint storage location.",
@@ -394,15 +451,29 @@
           "description": "Engine tuning and checkpointing; every field has a default."
         },
         "sink": {
-          "$ref": "#/$defs/SinkSpec",
-          "description": "Where records go."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SinkSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Single sink (linear form). Mutually exclusive with [`Self::sinks`]."
+        },
+        "sinks": {
+          "description": "One or more sinks for fan-out (ADR 0007). Mutually exclusive with\n[`Self::sink`].",
+          "items": {
+            "$ref": "#/$defs/BoundSinkSpec"
+          },
+          "type": "array"
         },
         "source": {
           "$ref": "#/$defs/SourceSpec",
           "description": "Where records come from."
         },
         "transforms": {
-          "description": "Ordered transform steps; may be empty for pure movement pipelines.",
+          "description": "Transform steps; may be empty for pure movement pipelines.\n\nOrder is the default wiring when `from` is omitted (linear). Explicit\n`from` edges enable fan-out (ADR 0007); fan-in is rejected.",
           "items": {
             "$ref": "#/$defs/TransformSpec"
           },
@@ -410,8 +481,7 @@
         }
       },
       "required": [
-        "source",
-        "sink"
+        "source"
       ],
       "type": "object"
     },
@@ -591,6 +661,13 @@
           "additionalProperties": false,
           "description": "A deterministic SQL transform over the incoming stream.",
           "properties": {
+            "from": {
+              "description": "Upstream stage id. When omitted, defaults to the previous transform\n(or `source` for the first step).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "id": {
               "description": "Unique step identifier.",
               "type": "string"
@@ -648,6 +725,13 @@
               "$ref": "#/$defs/ExecutionMode",
               "default": "auto",
               "description": "How invocations are dispatched to the provider."
+            },
+            "from": {
+              "description": "Upstream stage id. When omitted, defaults to the previous transform\n(or `source` for the first step).",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "description": "Unique step identifier.",
@@ -732,6 +816,13 @@
               "default": "auto",
               "description": "How invocations are dispatched to the provider."
             },
+            "from": {
+              "description": "Upstream stage id. When omitted, defaults to the previous transform\n(or `source` for the first step).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "id": {
               "description": "Unique step identifier.",
               "type": "string"
@@ -815,6 +906,13 @@
               "default": "auto",
               "description": "How invocations are dispatched to the provider."
             },
+            "from": {
+              "description": "Upstream stage id. When omitted, defaults to the previous transform\n(or `source` for the first step).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "id": {
               "description": "Unique step identifier.",
               "type": "string"
@@ -867,6 +965,13 @@
             "component": {
               "description": "Component artifact: a filesystem path (absolute or relative to the\npipeline document), or an OCI reference pinned by digest\n(`oci://registry/repo@sha256:…`). Tag-only OCI refs are rejected.",
               "type": "string"
+            },
+            "from": {
+              "description": "Upstream stage id. When omitted, defaults to the previous transform\n(or `source` for the first step).",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "description": "Unique step identifier.",

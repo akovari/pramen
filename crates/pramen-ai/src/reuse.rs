@@ -191,6 +191,7 @@ fn ledger_path(dir: &Path, name: &str) -> PathBuf {
 fn classify_config(on_invalid: InvalidPolicy, execution: ExecutionMode) -> AiTransform {
     AiTransform {
         id: "rq2-classify".into(),
+        from: None,
         model: "mock-1".into(),
         execution,
         dispatch: None,

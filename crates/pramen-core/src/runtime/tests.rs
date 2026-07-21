@@ -70,11 +70,15 @@ struct CollectingSink {
     rows: Arc<AtomicU64>,
     committed: Arc<AtomicU64>,
     hold: Option<Arc<tokio::sync::Semaphore>>,
+    fail_write: bool,
 }
 
 #[async_trait::async_trait]
 impl Sink for CollectingSink {
     async fn write(&mut self, batch: RecordBatch) -> Result<(), StageError> {
+        if self.fail_write {
+            return Err(StageError::InvalidData("sink boom".to_owned()));
+        }
         if let Some(hold) = &self.hold {
             let permit = hold.acquire().await;
             drop(permit);
@@ -97,6 +101,7 @@ fn collecting_sink() -> (Box<CollectingSink>, Arc<AtomicU64>, Arc<AtomicU64>) {
         rows: Arc::clone(&rows),
         committed: Arc::clone(&committed),
         hold: None,
+        fail_write: false,
     });
     (sink, rows, committed)
 }
@@ -113,8 +118,12 @@ async fn linear_pipeline_moves_every_row_and_commits() {
 
     let summary = run_pipeline(
         source,
-        vec![("split".to_owned(), Box::new(SplittingTransform))],
-        sink,
+        vec![(
+            "split".to_owned(),
+            "source".to_owned(),
+            Box::new(SplittingTransform),
+        )],
+        vec![("sink".to_owned(), "split".to_owned(), sink)],
         RunOptions::default(),
         Arc::clone(&metrics),
         CancellationToken::new(),
@@ -133,6 +142,72 @@ async fn linear_pipeline_moves_every_row_and_commits() {
 }
 
 #[tokio::test]
+async fn fanout_two_sinks_receive_identical_rows_and_both_commit() {
+    let source = Box::new(CountingSource {
+        total: 3,
+        rows: 10,
+        emitted: Arc::new(AtomicU64::new(0)),
+    });
+    let (sink_a, rows_a, committed_a) = collecting_sink();
+    let (sink_b, rows_b, committed_b) = collecting_sink();
+
+    run_pipeline(
+        source,
+        vec![],
+        vec![
+            ("a".to_owned(), "source".to_owned(), sink_a),
+            ("b".to_owned(), "source".to_owned(), sink_b),
+        ],
+        RunOptions::default(),
+        Arc::new(RunMetrics::default()),
+        CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(rows_a.load(Ordering::SeqCst), 30);
+    assert_eq!(rows_b.load(Ordering::SeqCst), 30);
+    assert_eq!(committed_a.load(Ordering::SeqCst), 1);
+    assert_eq!(committed_b.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn fanout_sink_failure_prevents_all_commits() {
+    let source = Box::new(CountingSource {
+        total: 2,
+        rows: 5,
+        emitted: Arc::new(AtomicU64::new(0)),
+    });
+    let (ok_sink, _, committed_ok) = collecting_sink();
+    let rows = Arc::new(AtomicU64::new(0));
+    let committed_fail = Arc::new(AtomicU64::new(0));
+    let fail_sink = Box::new(CollectingSink {
+        rows: Arc::clone(&rows),
+        committed: Arc::clone(&committed_fail),
+        hold: None,
+        fail_write: true,
+    });
+
+    let error = run_pipeline(
+        source,
+        vec![],
+        vec![
+            ("ok".to_owned(), "source".to_owned(), ok_sink),
+            ("bad".to_owned(), "source".to_owned(), fail_sink),
+        ],
+        RunOptions::default(),
+        Arc::new(RunMetrics::default()),
+        CancellationToken::new(),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(error, RunError::Stage { .. }));
+    assert_eq!(committed_ok.load(Ordering::SeqCst), 0);
+    assert_eq!(committed_fail.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn transform_error_fails_the_run_with_stage_id() {
     let source = Box::new(CountingSource {
         total: 100,
@@ -145,12 +220,13 @@ async fn transform_error_fails_the_run_with_stage_id() {
         source,
         vec![(
             "explode".to_owned(),
+            "source".to_owned(),
             Box::new(FailingTransform {
                 seen: 0,
                 fail_on: Some(3),
             }),
         )],
-        sink,
+        vec![("sink".to_owned(), "explode".to_owned(), sink)],
         RunOptions::default(),
         Arc::new(RunMetrics::default()),
         CancellationToken::new(),
@@ -179,7 +255,7 @@ async fn external_cancellation_stops_an_endless_run_promptly() {
     let run = tokio::spawn(run_pipeline(
         source,
         vec![],
-        sink,
+        vec![("sink".to_owned(), "source".to_owned(), sink)],
         RunOptions::default(),
         Arc::new(RunMetrics::default()),
         cancel.clone(),
@@ -210,13 +286,14 @@ async fn bounded_channels_apply_backpressure_to_the_source() {
         rows: Arc::clone(&rows),
         committed: Arc::clone(&committed),
         hold: Some(Arc::clone(&hold)),
+        fail_write: false,
     });
     let cancel = CancellationToken::new();
 
     let run = tokio::spawn(run_pipeline(
         source,
         vec![],
-        sink,
+        vec![("sink".to_owned(), "source".to_owned(), sink)],
         RunOptions {
             channel_capacity: 2,
         },

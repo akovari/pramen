@@ -6,8 +6,10 @@ synonym. Each entry lists terms to avoid because they blur a distinction the
 system depends on.
 
 **Pipeline**:
-A validated directed acyclic graph of one source, transforms, and one sink,
-declared in a versioned YAML specification.
+A validated directed acyclic graph of one source, transforms, and one or
+more sinks, declared in a versioned YAML specification. Linear documents
+(omit `from`, singular `sink`) remain the default; fan-out uses optional
+`from` edges and `sinks` (ADR 0007). Fan-in is not supported in v1alpha1.
 _Avoid_: job, flow, DAG (as a user-facing noun).
 
 **Run**:

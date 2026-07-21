@@ -41,6 +41,9 @@ pub struct Metadata {
     pub name: String,
 }
 
+/// Stage id of the implicit source node in a pipeline graph (ADR 0007).
+pub const SOURCE_STAGE_ID: &str = "source";
+
 /// The `spec` body of a pipeline document.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -50,14 +53,105 @@ pub struct PipelineSpecBody {
     pub models: BTreeMap<String, ModelSpec>,
     /// Where records come from.
     pub source: SourceSpec,
-    /// Ordered transform steps; may be empty for pure movement pipelines.
+    /// Transform steps; may be empty for pure movement pipelines.
+    ///
+    /// Order is the default wiring when `from` is omitted (linear). Explicit
+    /// `from` edges enable fan-out (ADR 0007); fan-in is rejected.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub transforms: Vec<TransformSpec>,
-    /// Where records go.
-    pub sink: SinkSpec,
+    /// Single sink (linear form). Mutually exclusive with [`Self::sinks`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sink: Option<SinkSpec>,
+    /// One or more sinks for fan-out (ADR 0007). Mutually exclusive with
+    /// [`Self::sink`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sinks: Vec<BoundSinkSpec>,
     /// Engine tuning and checkpointing; every field has a default.
     #[serde(default)]
     pub runtime: RuntimeSpec,
+}
+
+/// A sink binding with an optional upstream stage id.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BoundSinkSpec {
+    /// Unique sink identifier within the pipeline.
+    pub id: String,
+    /// Upstream stage id (`source` or a transform id). When omitted, defaults
+    /// to the last transform, or `source` when there are no transforms.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    /// Sink implementation fields (`type`, `target`, …).
+    ///
+    /// Flattened so YAML matches a normal sink plus `id`/`from`. This struct
+    /// omits `deny_unknown_fields` because serde forbids combining that
+    /// attribute with `flatten`.
+    #[serde(flatten)]
+    pub sink: SinkSpec,
+}
+
+/// A resolved sink edge after applying default `from` wiring.
+#[derive(Debug, Clone, Copy)]
+pub struct ResolvedSink<'a> {
+    /// Sink id (`"sink"` for the singular form).
+    pub id: &'a str,
+    /// Resolved upstream stage id.
+    pub from: &'a str,
+    /// Sink configuration.
+    pub sink: &'a SinkSpec,
+}
+
+impl PipelineSpecBody {
+    /// Resolve transform `(id, from)` edges with linear defaults.
+    #[must_use]
+    pub fn resolved_transform_edges(&self) -> Vec<(String, String)> {
+        self.transforms
+            .iter()
+            .enumerate()
+            .map(|(index, transform)| {
+                let from = transform.from_stage().map_or_else(
+                    || {
+                        if index == 0 {
+                            SOURCE_STAGE_ID.to_owned()
+                        } else {
+                            self.transforms[index - 1].id().to_owned()
+                        }
+                    },
+                    str::to_owned,
+                );
+                (transform.id().to_owned(), from)
+            })
+            .collect()
+    }
+
+    /// Resolve sinks with linear defaults. Empty when neither `sink` nor
+    /// `sinks` is set (validation catches that).
+    #[must_use]
+    pub fn resolved_sinks(&self) -> Vec<ResolvedSink<'_>> {
+        let default_from: &str = self
+            .transforms
+            .last()
+            .map_or(SOURCE_STAGE_ID, TransformSpec::id);
+        if !self.sinks.is_empty() {
+            return self
+                .sinks
+                .iter()
+                .map(|bound| ResolvedSink {
+                    id: bound.id.as_str(),
+                    from: bound.from.as_deref().unwrap_or(default_from),
+                    sink: &bound.sink,
+                })
+                .collect();
+        }
+        match &self.sink {
+            Some(sink) => vec![ResolvedSink {
+                id: "sink",
+                from: default_from,
+                sink,
+            }],
+            None => Vec::new(),
+        }
+    }
 }
 
 /// A named model configuration.
@@ -159,6 +253,18 @@ impl TransformSpec {
             Self::Wasm(transform) => &transform.id,
         }
     }
+
+    /// Optional upstream stage id (`source` or another transform).
+    #[must_use]
+    pub fn from_stage(&self) -> Option<&str> {
+        match self {
+            Self::Sql(transform) => transform.from.as_deref(),
+            Self::AiExtract(transform)
+            | Self::AiClassify(transform)
+            | Self::AiGenerate(transform) => transform.from.as_deref(),
+            Self::Wasm(transform) => transform.from.as_deref(),
+        }
+    }
 }
 
 /// A deterministic SQL transform.
@@ -167,6 +273,10 @@ impl TransformSpec {
 pub struct SqlTransform {
     /// Unique step identifier.
     pub id: String,
+    /// Upstream stage id. When omitted, defaults to the previous transform
+    /// (or `source` for the first step).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
     /// SQL text; the incoming stream is visible as the table `input`.
     pub query: String,
 }
@@ -177,6 +287,10 @@ pub struct SqlTransform {
 pub struct WasmTransform {
     /// Unique step identifier.
     pub id: String,
+    /// Upstream stage id. When omitted, defaults to the previous transform
+    /// (or `source` for the first step).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
     /// Component artifact: a filesystem path (absolute or relative to the
     /// pipeline document), or an OCI reference pinned by digest
     /// (`oci://registry/repo@sha256:…`). Tag-only OCI refs are rejected.
@@ -213,6 +327,10 @@ pub struct WasmLimitsSpec {
 pub struct AiTransform {
     /// Unique step identifier.
     pub id: String,
+    /// Upstream stage id. When omitted, defaults to the previous transform
+    /// (or `source` for the first step).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
     /// Name of a model declared under `spec.models`.
     pub model: String,
     /// How invocations are dispatched to the provider.

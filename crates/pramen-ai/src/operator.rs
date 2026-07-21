@@ -965,6 +965,7 @@ mod tests {
     fn config(on_invalid: InvalidPolicy) -> AiTransform {
         AiTransform {
             id: "classify".into(),
+            from: None,
             model: "m".into(),
             execution: ExecutionMode::Auto,
             dispatch: None,
@@ -1520,6 +1521,7 @@ mod tests {
     fn generate_config(on_invalid: InvalidPolicy) -> AiTransform {
         AiTransform {
             id: "summarize".into(),
+            from: None,
             model: "m".into(),
             execution: ExecutionMode::Auto,
             dispatch: None,

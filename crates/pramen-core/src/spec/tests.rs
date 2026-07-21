@@ -267,9 +267,108 @@ spec:
     assert_eq!(spec.spec.runtime.target_batch_bytes, 8 * 1024 * 1024);
     assert_eq!(spec.spec.runtime.max_inflight_bytes, 256 * 1024 * 1024);
     assert!(spec.spec.transforms.is_empty());
-    let SinkSpec::Postgres { mode, dsn_env, .. } = &spec.spec.sink;
+    let SinkSpec::Postgres { mode, dsn_env, .. } = spec.spec.sink.as_ref().unwrap();
     assert_eq!(*mode, SinkMode::Append);
     assert_eq!(dsn_env, "PRAMEN_POSTGRES_DSN");
+}
+
+#[test]
+fn fanout_sinks_parse_and_resolve_from() {
+    let yaml = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: fanout
+spec:
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  transforms:
+    - id: project
+      type: sql
+      query: SELECT * FROM input
+  sinks:
+    - id: primary
+      type: postgres
+      target: public.primary
+    - id: archive
+      from: project
+      type: postgres
+      target: public.archive
+";
+    let spec = parse(yaml).unwrap();
+    let sinks = spec.spec.resolved_sinks();
+    assert_eq!(sinks.len(), 2);
+    assert_eq!(sinks[0].id, "primary");
+    assert_eq!(sinks[0].from, "project");
+    assert_eq!(sinks[1].id, "archive");
+    assert_eq!(sinks[1].from, "project");
+}
+
+#[test]
+fn duplicate_sink_ids_rejected() {
+    let yaml = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: dup-sink
+spec:
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  sinks:
+    - id: same
+      type: postgres
+      target: public.a
+    - id: same
+      type: postgres
+      target: public.b
+";
+    let err = parse(yaml).unwrap_err();
+    let SpecError::Invalid(issues) = err else {
+        panic!("expected invalid, got {err}");
+    };
+    assert!(
+        issues.iter().any(|i| i.message.contains("duplicate id")),
+        "{issues:?}"
+    );
+}
+
+#[test]
+fn both_sink_and_sinks_rejected() {
+    let yaml = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: both
+spec:
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  sink:
+    type: postgres
+    target: public.out
+  sinks:
+    - id: other
+      type: postgres
+      target: public.other
+";
+    let err = parse(yaml).unwrap_err();
+    let SpecError::Invalid(issues) = err else {
+        panic!("expected invalid, got {err}");
+    };
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.message.contains("either `sink` or `sinks`")),
+        "{issues:?}"
+    );
 }
 
 #[test]
