@@ -335,6 +335,7 @@ async fn plan_transforms(
             ),
             TransformSpec::AiExtract(ai) => plan_semantic("ai.extract", ai, spec, smoke).await?,
             TransformSpec::AiClassify(ai) => plan_semantic("ai.classify", ai, spec, smoke).await?,
+            TransformSpec::AiGenerate(ai) => plan_semantic("ai.generate", ai, spec, smoke).await?,
             TransformSpec::Wasm(wasm) => {
                 let component = pramen_wasm::resolve_component_path(pipeline_dir, &wasm.component);
                 let limits = pramen_wasm::InvocationLimits::from_spec(&wasm.limits);

@@ -129,13 +129,16 @@ Early implementation; no stable public API yet. What runs today:
 - run-level cost governance: `maxRunTokens` hard ceilings (ledger reuse
   stays free) and an always-armed circuit breaker against invalid-output
   spikes;
-- governed semantic transforms run today: `ai.extract` / `ai.classify` on
-  the durable SQLite (WAL) inference ledger — content-addressed work keys,
-  result reuse on replay, pre-dispatch token budgets, and strict typed
-  output validation — with three providers: deterministic `mock`, any
-  OpenAI-compatible endpoint (vLLM, Ollama, llama.cpp), and Amazon Bedrock
-  Converse (stub-tested offline per ADR 0005); see
-  [examples/local-tickets-ai-classify.yaml](examples/local-tickets-ai-classify.yaml)
+- governed semantic transforms run today: `ai.extract` / `ai.classify` /
+  `ai.generate` on the durable SQLite (WAL) inference ledger —
+  content-addressed work keys, result reuse on replay, pre-dispatch token
+  budgets, and strict typed output validation (`ai.generate` requires
+  UTF-8 `maxChars` + `maxOutputTokensPerRecord`) — with three providers:
+  deterministic `mock`, any OpenAI-compatible endpoint (vLLM, Ollama,
+  llama.cpp), and Amazon Bedrock Converse (stub-tested offline per ADR
+  0005); see
+  [examples/local-tickets-ai-classify.yaml](examples/local-tickets-ai-classify.yaml),
+  [examples/local-tickets-ai-generate.yaml](examples/local-tickets-ai-generate.yaml),
   and `pramen ai status`;
 - provider-batch execution runs today (`execution: batch`): misses are
   submitted as one asynchronous job whose id is durably recorded per item

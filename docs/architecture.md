@@ -987,8 +987,9 @@ record of any changes to the architecture.
 - local filesystem and S3;
 - Parquet and NDJSON sources;
 - DataFusion SQL/expression transforms;
-- `ai.extract` and `ai.classify` with strict schema validation, budgets, and
-  the SQLite result ledger;
+- `ai.extract`, `ai.classify`, and `ai.generate` with strict schema
+  validation, budgets, bounded text enforcement, and the SQLite result
+  ledger;
 - Bedrock Converse online and batch, EU-pinned, plus the vLLM online adapter;
 - native PostgreSQL `COPY` sink covering local, Aurora, and RDS;
 - bounded channels, graceful shutdown, metrics, file checkpoints;
@@ -1006,7 +1007,7 @@ submissions are explicitly surfaced; resource and model cost are measured.
   and OCI distribution;
 - Azure Blob and GCS sources;
 - dead-letter handling and review queue export;
-- `ai.generate`, additional provider adapters as demanded;
+- additional provider adapters as demanded;
 - shared checkpoint and ledger backends for fleet deployments.
 
 Exit criterion: a documented, reproducible AWS deployment with load-impact

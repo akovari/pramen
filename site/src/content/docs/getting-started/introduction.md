@@ -10,8 +10,9 @@ transformation runtime built around three commitments:
    through bounded channels. A slow destination applies backpressure all the
    way to the source, so peak memory does not grow with input size.
 2. **Governed LLM enrichment.** Semantic transforms (`ai.extract`,
-   `ai.classify`) are schema-bound operations with hard budgets, strict
-   output validation, and a durable, content-addressed inference ledger.
+   `ai.classify`, `ai.generate`) are schema-bound operations with hard
+   budgets, strict output validation, and a durable, content-addressed
+   inference ledger.
    Completed model calls are never re-billed — not after a crash, not on a
    re-run, not on a partial replay.
 3. **Radically simple operations.** One static binary with zero native

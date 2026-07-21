@@ -131,6 +131,9 @@ pub enum TransformSpec {
     /// Governed semantic classification into typed columns.
     #[serde(rename = "ai.classify")]
     AiClassify(AiTransform),
+    /// Governed generation of bounded UTF-8 text fields.
+    #[serde(rename = "ai.generate")]
+    AiGenerate(AiTransform),
     /// A sandboxed WebAssembly component transform (Arrow IPC in/out).
     #[serde(rename = "wasm")]
     Wasm(WasmTransform),
@@ -142,7 +145,9 @@ impl TransformSpec {
     pub fn id(&self) -> &str {
         match self {
             Self::Sql(transform) => &transform.id,
-            Self::AiExtract(transform) | Self::AiClassify(transform) => &transform.id,
+            Self::AiExtract(transform)
+            | Self::AiClassify(transform)
+            | Self::AiGenerate(transform) => &transform.id,
             Self::Wasm(transform) => &transform.id,
         }
     }
@@ -190,7 +195,10 @@ pub struct WasmLimitsSpec {
     pub max_output_mb: Option<u32>,
 }
 
-/// A governed semantic transform (`ai.extract` / `ai.classify`).
+/// A governed semantic transform (`ai.extract` / `ai.classify` / `ai.generate`).
+///
+/// `ai.generate` reuses this shape but requires UTF-8 output fields with
+/// explicit `maxChars` bounds and a declared `maxOutputTokensPerRecord`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AiTransform {
@@ -251,6 +259,13 @@ pub struct FieldSpec {
     /// Whether the model may return null for this column.
     #[serde(default)]
     pub nullable: bool,
+    /// Maximum Unicode scalar values for a `utf8` field.
+    ///
+    /// Required on every `ai.generate` output field. Optional on
+    /// `ai.extract` / `ai.classify`. Over-long model output fails
+    /// validation and follows `onInvalid` — never silently truncated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_chars: Option<u32>,
 }
 
 /// Scalar types available to semantic transform outputs.

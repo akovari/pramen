@@ -54,7 +54,7 @@ Ordered list; may be empty. Every entry needs a unique `id`.
 | `id` | string | Unique step id |
 | `query` | string | DataFusion SQL; the incoming stream is the table `input` |
 
-### `type: ai.extract` / `type: ai.classify`
+### `type: ai.extract` / `type: ai.classify` / `type: ai.generate`
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -63,11 +63,12 @@ Ordered list; may be empty. Every entry needs a unique `id`.
 | `execution` | string | `auto` *(default, resolves to online)*, `online`, or `batch` (asynchronous provider-batch job with crash reconciliation; requires a batch-capable provider) |
 | `inputs` | string[] | Input column names (at least one) |
 | `instruction` | string | The fixed instruction; part of the work key |
-| `output.fields[]` | object[] | `{ name, type, nullable }`; at least one, unique names |
-| `output.fields[].type` | string | `utf8`, `int64`, `float64`, `bool`, `timestamp` |
+| `output.fields[]` | object[] | `{ name, type, nullable, maxChars? }`; at least one, unique names |
+| `output.fields[].type` | string | `utf8`, `int64`, `float64`, `bool`, `timestamp` — `ai.generate` allows only `utf8` |
+| `output.fields[].maxChars` | int? | Positive Unicode scalar limit for `utf8` fields; **required** on every `ai.generate` field; over-long model output fails validation (never truncated) |
 | `validation.onInvalid` | string | `fail` *(default)*, `drop`, or `review` |
 | `budget.maxInputTokensPerRecord` | int? | Positive; per-record pre-dispatch gate |
-| `budget.maxOutputTokensPerRecord` | int? | Positive; provider-side cap |
+| `budget.maxOutputTokensPerRecord` | int? | Positive; provider-side cap + post-validation recheck; **required** for `ai.generate` |
 | `budget.maxRunTokens` | int? | Positive; hard per-run ceiling on provider-reported tokens — ledger reuse is free |
 | `breaker.maxConsecutiveInvalid` | int | Consecutive invalid outputs that abort the run; default 25, always armed |
 

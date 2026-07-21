@@ -99,7 +99,10 @@ fn validate_transforms(spec: &PipelineSpec, push: &mut impl FnMut(&str, String))
                 }
             }
             TransformSpec::AiExtract(ai) | TransformSpec::AiClassify(ai) => {
-                validate_ai_transform(spec, ai, &path, push);
+                validate_ai_transform(spec, ai, &path, false, push);
+            }
+            TransformSpec::AiGenerate(ai) => {
+                validate_ai_transform(spec, ai, &path, true, push);
             }
             TransformSpec::Wasm(wasm) => {
                 if wasm.component.trim().is_empty() {
@@ -114,8 +117,11 @@ fn validate_ai_transform(
     spec: &PipelineSpec,
     ai: &AiTransform,
     path: &str,
+    generate: bool,
     push: &mut impl FnMut(&str, String),
 ) {
+    use super::types::FieldType;
+
     if !spec.spec.models.contains_key(&ai.model) {
         let declared: Vec<&str> = spec.spec.models.keys().map(String::as_str).collect();
         push(
@@ -147,11 +153,36 @@ fn validate_ai_transform(
     }
     let mut seen_fields = BTreeSet::new();
     for (field_index, field) in ai.output.fields.iter().enumerate() {
-        let field_path = format!("{path}.output.fields[{field_index}].name");
+        let field_base = format!("{path}.output.fields[{field_index}]");
+        let field_path = format!("{field_base}.name");
         if field.name.trim().is_empty() {
             push(&field_path, "must not be empty".to_owned());
         } else if !seen_fields.insert(field.name.as_str()) {
             push(&field_path, format!("duplicate field `{}`", field.name));
+        }
+        if generate && field.field_type != FieldType::Utf8 {
+            push(
+                &format!("{field_base}.type"),
+                format!(
+                    "`ai.generate` output fields must be utf8 (field `{}` is {:?})",
+                    field.name, field.field_type
+                ),
+            );
+        }
+        match field.max_chars {
+            Some(0) => push(
+                &format!("{field_base}.maxChars"),
+                "must be positive".to_owned(),
+            ),
+            Some(_) if field.field_type != FieldType::Utf8 => push(
+                &format!("{field_base}.maxChars"),
+                "only valid on utf8 fields".to_owned(),
+            ),
+            None if generate => push(
+                &format!("{field_base}.maxChars"),
+                "`ai.generate` requires maxChars on every output field".to_owned(),
+            ),
+            _ => {}
         }
     }
     if let Some(budget) = &ai.budget {
@@ -172,6 +203,24 @@ fn validate_ai_transform(
                 &format!("{path}.budget.maxRunTokens"),
                 "must be positive".to_owned(),
             );
+        }
+    }
+    if generate {
+        match ai
+            .budget
+            .as_ref()
+            .and_then(|b| b.max_output_tokens_per_record)
+        {
+            None => push(
+                &format!("{path}.budget.maxOutputTokensPerRecord"),
+                "`ai.generate` requires a positive maxOutputTokensPerRecord \
+                 (provider request cap + post-validation)"
+                    .to_owned(),
+            ),
+            Some(0) => {
+                // Already reported above when the budget block is present.
+            }
+            Some(_) => {}
         }
     }
     if ai.breaker.max_consecutive_invalid == 0 {

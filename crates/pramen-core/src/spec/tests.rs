@@ -150,6 +150,74 @@ fn json_schema_is_generated_and_strict() {
     let text = schema.to_string();
     assert!(text.contains("pramen.dev/v1alpha1"));
     assert!(text.contains("ai.extract"));
+    assert!(text.contains("ai.generate"));
     // deny_unknown_fields must surface as additionalProperties: false.
     assert!(text.contains("\"additionalProperties\":false"));
+}
+
+#[test]
+fn ai_generate_requires_utf8_bounds_and_output_token_cap() {
+    const VALID: &str = r#"
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: generate-demo
+spec:
+  models:
+    writer:
+      provider: mock
+      model: mock-1
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  transforms:
+    - id: summarize
+      type: ai.generate
+      model: writer
+      inputs: [description]
+      instruction: Summarize the ticket in one sentence.
+      output:
+        fields:
+          - name: summary
+            type: utf8
+            maxChars: 120
+      budget:
+        maxOutputTokensPerRecord: 64
+  sink:
+    type: postgres
+    target: public.out
+"#;
+    let spec = parse(VALID).unwrap();
+    let TransformSpec::AiGenerate(ai) = &spec.spec.transforms[0] else {
+        panic!("expected ai.generate");
+    };
+    assert_eq!(ai.output.fields[0].max_chars, Some(120));
+
+    let missing_cap = VALID.replace("      budget:\n        maxOutputTokensPerRecord: 64\n", "");
+    let issues = issues_of(&missing_cap);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.contains("maxOutputTokensPerRecord")),
+        "issues: {issues:?}"
+    );
+
+    let missing_chars = VALID.replace("            maxChars: 120\n", "");
+    let issues = issues_of(&missing_chars);
+    assert!(
+        issues.iter().any(|i| i.contains("maxChars")),
+        "issues: {issues:?}"
+    );
+
+    let wrong_type = VALID.replace(
+        "            type: utf8\n            maxChars: 120\n",
+        "            type: int64\n            maxChars: 120\n",
+    );
+    let issues = issues_of(&wrong_type);
+    assert!(
+        issues.iter().any(|i| i.contains("must be utf8")),
+        "issues: {issues:?}"
+    );
 }

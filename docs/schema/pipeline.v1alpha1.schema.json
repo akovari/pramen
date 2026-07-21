@@ -125,6 +125,15 @@
       "additionalProperties": false,
       "description": "One output column of a semantic transform.",
       "properties": {
+        "maxChars": {
+          "description": "Maximum Unicode scalar values for a `utf8` field.\n\nRequired on every `ai.generate` output field. Optional on\n`ai.extract` / `ai.classify`. Over-long model output fails\nvalidation and follows `onInvalid` — never silently truncated.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "name": {
           "description": "Column name.",
           "type": "string"
@@ -624,6 +633,78 @@
             },
             "type": {
               "const": "ai.classify",
+              "type": "string"
+            },
+            "validation": {
+              "$ref": "#/$defs/AiValidation",
+              "default": {
+                "onInvalid": "fail"
+              },
+              "description": "What happens when the model output fails validation."
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "model",
+            "inputs",
+            "instruction",
+            "output"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Governed generation of bounded UTF-8 text fields.",
+          "properties": {
+            "breaker": {
+              "$ref": "#/$defs/AiBreaker",
+              "default": {
+                "maxConsecutiveInvalid": 25
+              },
+              "description": "Error-spike circuit breaker; always armed."
+            },
+            "budget": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AiBudget"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Hard per-record token budgets."
+            },
+            "execution": {
+              "$ref": "#/$defs/ExecutionMode",
+              "default": "auto",
+              "description": "How invocations are dispatched to the provider."
+            },
+            "id": {
+              "description": "Unique step identifier.",
+              "type": "string"
+            },
+            "inputs": {
+              "description": "Input column names passed to the model.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "instruction": {
+              "description": "The fixed instruction; part of the work key.",
+              "type": "string"
+            },
+            "model": {
+              "description": "Name of a model declared under `spec.models`.",
+              "type": "string"
+            },
+            "output": {
+              "$ref": "#/$defs/AiOutput",
+              "description": "The typed output contract."
+            },
+            "type": {
+              "const": "ai.generate",
               "type": "string"
             },
             "validation": {
