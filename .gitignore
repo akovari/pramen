@@ -7,3 +7,4 @@ lcov.info
 mise.local.toml
 /.pramen
 /spikes/**/target
+.worktrees/
