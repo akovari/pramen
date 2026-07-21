@@ -1,0 +1,27 @@
+# Empty workspace table: this package is intentionally outside the Pramen
+# Cargo workspace (simulates out-of-tree authorship). An outsider cloning
+# only this directory can drop the table or keep it — either works alone.
+[workspace]
+
+[package]
+name = "acme-gross"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Third-party-style Pramen WASM transform (X2.1 extensibility proof)"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Stand-in for crates.io pins an outsider would use. No path deps into the
+# Pramen workspace — only the published WIT ABI (vendored under ../wit) and
+# public docs.
+arrow = { version = "56", default-features = false, features = ["ipc"] }
+wit-bindgen = "0.46"
+
+[profile.release]
+lto = true
+opt-level = "s"
+strip = true

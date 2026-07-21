@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
-# Spikes are disposable and deliberately outside the workspace gates.
-exclude = ["spikes"]
+# Spikes and the X2.1 third-party guest are deliberately outside the
+# workspace gates (the guest also carries its own empty [workspace] table).
+exclude = ["spikes", "examples/external-wasm-guest/guest"]
 members = [
     "crates/pramen",
     "crates/pramen-core",

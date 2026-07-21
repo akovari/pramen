@@ -45,3 +45,9 @@ Paths are resolved relative to the pipeline document directory.
 Edit `guest/src/lib.rs` — change `transform_batch` to your column logic.
 Keep the IPC envelope and WIT export unchanged so `pramen transform test`
 and the runtime host stay compatible.
+
+## Third-party proof
+
+For a guest authored **outside** this template (X2.1 extensibility proof),
+see `examples/external-wasm-guest/` — standalone project, vendored WIT, no
+path deps into Pramen crates.

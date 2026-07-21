@@ -59,7 +59,15 @@ run = "./scripts/release-quickstart.sh"
 
 [tasks.clean]
 description = "Remove Rust build artifacts (frees target/ disk space)"
-run = "rm -rf target spikes/*/target"
+run = "rm -rf target spikes/*/target examples/external-wasm-guest/guest/target"
+
+[tasks.wasm-external-guest]
+description = "Rebuild the X2.1 third-party WASM guest (needs wasm32-wasip2)"
+run = "./examples/external-wasm-guest/build.sh"
+
+[tasks.wasm-external-conformance]
+description = "Offline transform test against the checked-in third-party guest"
+run = "cargo run -p pramen --quiet -- transform test --component examples/external-wasm-guest/dist/acme_gross.wasm"
 
 [tasks.ci]
 description = "The full local gate; identical checks run in GitHub Actions"
