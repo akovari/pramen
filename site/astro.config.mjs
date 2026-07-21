@@ -66,6 +66,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Status and roadmap', slug: 'project/roadmap' },
 						{ label: 'Measured results', slug: 'project/benchmarks' },
+						{ label: 'Dispatch policy', slug: 'project/dispatch-policy' },
 						{ label: 'Design decisions', slug: 'project/decisions' },
 					],
 				},

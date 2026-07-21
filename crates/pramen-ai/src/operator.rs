@@ -8,14 +8,19 @@
 //!
 //! Two dispatch shapes share all of that governance:
 //!
-//! - **online** (`execution: auto` or `online`): one provider call per
-//!   ledger miss, streamed row by row;
-//! - **provider-batch** (`execution: batch`): ledger misses are collected
-//!   while input streams through, submitted as one asynchronous job whose
-//!   id is durably recorded per item *before* results are awaited, then
-//!   polled, fetched, validated, and joined back to the buffered rows.
-//!   A run that crashes after submission reconciles on restart by job and
-//!   item id instead of resubmitting — submitted work is never re-billed.
+//! - **online** (`execution: online`, or `auto` without dispatch hints):
+//!   one provider call per ledger miss, streamed row by row;
+//! - **provider-batch** (`execution: batch`, or `auto` when the cost model
+//!   recommends it): ledger misses are collected while input streams
+//!   through, submitted as one asynchronous job whose id is durably
+//!   recorded per item *before* results are awaited, then polled, fetched,
+//!   validated, and joined back to the buffered rows. A run that crashes
+//!   after submission reconciles on restart by job and item id instead of
+//!   resubmitting — submitted work is never re-billed.
+//!
+//! `execution: auto` consults [`crate::dispatch`] when the transform sets
+//! `dispatch.expectedRecords` and `dispatch.deadlineSeconds`; otherwise it
+//! stays online (safe default for unbounded or unplanned work).
 //!
 //! `onInvalid: review` routes the record to the durable
 //! [review queue](crate::review): the record is withheld from this run's
@@ -27,6 +32,7 @@
 //! a planned optimization).
 
 use crate::budget;
+use crate::dispatch::{self, DispatchPlan};
 use crate::error::AiError;
 use crate::ledger::{Ledger, RecordedResult, WorkState};
 use crate::provider::{BatchStatus, InferenceRequest, Provider, ProviderResponse};
@@ -41,7 +47,7 @@ use arrow::array::{
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use pramen_core::runtime::{StageError, Transform};
-use pramen_core::spec::{AiTransform, ExecutionMode, FieldType, InvalidPolicy};
+use pramen_core::spec::{AiTransform, FieldType, InvalidPolicy};
 use serde_json::{Map, Value, json};
 use std::sync::Arc;
 
@@ -69,6 +75,8 @@ pub struct SemanticTransform {
     consecutive_invalid: u32,
     /// Whether this stage dispatches via the provider's batch API.
     batch_mode: bool,
+    /// Plan produced when `execution: auto` ran the cost model.
+    auto_plan: Option<DispatchPlan>,
     /// Batch mode: input batches buffered until results arrive.
     buffered: Vec<RecordBatch>,
     /// Batch mode: ledger misses awaiting submission, keyed by work key.
@@ -82,14 +90,17 @@ pub struct SemanticTransform {
 impl SemanticTransform {
     /// Build the operator for one `ai.extract`/`ai.classify`/`ai.generate` step.
     ///
-    /// `execution: auto` resolves to online; `execution: batch` requires
-    /// the provider to declare batch capability.
+    /// `execution: auto` runs the [`crate::dispatch`] cost model when
+    /// `dispatch.expectedRecords` and `dispatch.deadlineSeconds` are set
+    /// and the provider supports batch; otherwise it stays online.
+    /// `execution: batch` requires the provider to declare batch capability.
     ///
     /// # Errors
     ///
     /// Returns [`AiError::Unsupported`] for spec features this build does
     /// not execute (batch on a non-batch provider, timestamp output
-    /// fields), so pipelines fail at plan time rather than mid-run.
+    /// fields, unknown rate cards), so pipelines fail at plan time rather
+    /// than mid-run.
     pub fn new(
         operation: &str,
         config: AiTransform,
@@ -97,14 +108,13 @@ impl SemanticTransform {
         model_id: &str,
         ledger: Ledger,
     ) -> Result<Self, AiError> {
-        let batch_mode = config.execution == ExecutionMode::Batch;
-        if batch_mode && !provider.capabilities().batch {
-            return Err(AiError::Unsupported(format!(
-                "execution: batch, but provider `{}` does not support batch execution; \
-                 use auto or online",
-                provider.id()
-            )));
-        }
+        let (batch_mode, auto_plan) = dispatch::resolve_batch_mode(
+            config.execution,
+            provider.capabilities().batch,
+            config.dispatch.as_ref(),
+            provider.id(),
+        )
+        .map_err(AiError::Unsupported)?;
         if let Some(field) = config
             .output
             .fields
@@ -115,6 +125,14 @@ impl SemanticTransform {
                 "output field `{}`: timestamp outputs are not supported yet",
                 field.name
             )));
+        }
+        if let Some(plan) = &auto_plan {
+            tracing::info!(
+                transform = %config.id,
+                recommended = %plan.recommended,
+                reason = %plan.reason,
+                "execution: auto resolved via dispatch cost model"
+            );
         }
         let output_schema = output_json_schema(&config.output.fields);
         Ok(Self {
@@ -129,6 +147,7 @@ impl SemanticTransform {
             run_tokens: 0,
             consecutive_invalid: 0,
             batch_mode,
+            auto_plan,
             buffered: Vec::new(),
             pending: std::collections::BTreeMap::new(),
             open_jobs: std::collections::BTreeSet::new(),
@@ -140,6 +159,18 @@ impl SemanticTransform {
     #[must_use]
     pub fn run_tokens(&self) -> u64 {
         self.run_tokens
+    }
+
+    /// Whether this stage is using provider-batch dispatch.
+    #[must_use]
+    pub fn batch_mode(&self) -> bool {
+        self.batch_mode
+    }
+
+    /// The cost-model plan when `execution: auto` produced one.
+    #[must_use]
+    pub fn auto_plan(&self) -> Option<&DispatchPlan> {
+        self.auto_plan.as_ref()
     }
 
     fn stage_error(&self, error: &AiError) -> StageError {
@@ -844,7 +875,7 @@ impl Transform for SemanticTransform {
 mod tests {
     use super::*;
     use crate::provider::{Capabilities, MockProvider};
-    use pramen_core::spec::{AiBreaker, AiOutput, AiValidation, FieldSpec};
+    use pramen_core::spec::{AiBreaker, AiOutput, AiValidation, ExecutionMode, FieldSpec};
 
     /// A provider whose output never validates — for breaker tests.
     struct GarbageProvider {
@@ -936,6 +967,7 @@ mod tests {
             id: "classify".into(),
             model: "m".into(),
             execution: ExecutionMode::Auto,
+            dispatch: None,
             inputs: vec!["description".into()],
             instruction: "classify the ticket".into(),
             output: AiOutput {
@@ -1173,6 +1205,50 @@ mod tests {
             ledger,
         )
         .unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn auto_dispatch_cost_model_selects_batch_when_deadline_allows() {
+        let (path, ledger) = temp_ledger("autodispatch");
+        let mut cfg = config(InvalidPolicy::Fail);
+        cfg.execution = ExecutionMode::Auto;
+        cfg.dispatch = Some(pramen_core::spec::AutoDispatchHints {
+            expected_records: Some(10_000),
+            deadline_seconds: Some(86_400),
+            input_tokens_per_record: None,
+            output_tokens_per_record: None,
+            rate_card: Some("mock".to_owned()),
+        });
+        let transform = SemanticTransform::new(
+            "ai.classify",
+            cfg,
+            Arc::new(MockProvider::new()),
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+        assert!(transform.batch_mode());
+        assert_eq!(
+            transform.auto_plan().expect("plan").recommended,
+            crate::dispatch::RecommendedMode::Batch
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn auto_without_dispatch_hints_stays_online() {
+        let (path, ledger) = temp_ledger("autoonline");
+        let transform = SemanticTransform::new(
+            "ai.classify",
+            config(InvalidPolicy::Fail),
+            Arc::new(MockProvider::new()),
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+        assert!(!transform.batch_mode());
+        assert!(transform.auto_plan().is_none());
         let _ = std::fs::remove_file(path);
     }
 
@@ -1446,6 +1522,7 @@ mod tests {
             id: "summarize".into(),
             model: "m".into(),
             execution: ExecutionMode::Auto,
+            dispatch: None,
             inputs: vec!["description".into()],
             instruction: "write a short summary".into(),
             output: AiOutput {

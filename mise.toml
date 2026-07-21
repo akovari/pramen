@@ -53,6 +53,10 @@ run = "./scripts/bench.sh"
 description = "Regenerate RQ2 memoization metrics (offline mock + ledger)"
 run = "./scripts/rq2-memoization.sh"
 
+[tasks.dispatch-frontier]
+description = "Regenerate the E2.1 offline dispatch frontier Markdown"
+run = "cargo run -q -p pramen -- ai dispatch-plan --sweep --out docs/research/e2-1-dispatch-frontier.md"
+
 [tasks.perf-gate]
 description = "Perf regression gate: designated benches vs the merge-base"
 run = "./scripts/perf-gate.sh"

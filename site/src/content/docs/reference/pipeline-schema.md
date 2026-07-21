@@ -61,7 +61,8 @@ Ordered list; may be empty. Every entry needs a unique `id`.
 | --- | --- | --- |
 | `id` | string | Unique step id |
 | `model` | string | Must reference a key in `spec.models` |
-| `execution` | string | `auto` *(default, resolves to online)*, `online`, or `batch` (asynchronous provider-batch job with crash reconciliation; requires a batch-capable provider) |
+| `execution` | string | `auto` *(default)*, `online`, or `batch` (asynchronous provider-batch job with crash reconciliation; requires a batch-capable provider). `auto` runs the cost model when `dispatch` hints are set; otherwise online. |
+| `dispatch` | object? | Planning inputs for `execution: auto`: `expectedRecords`, `deadlineSeconds`, optional `inputTokensPerRecord` / `outputTokensPerRecord` / `rateCard` (`mock`, `openai-compat-stub`, `bedrock-illustrative`) |
 | `inputs` | string[] | Input column names (at least one) |
 | `instruction` | string | The fixed instruction; part of the work key |
 | `output.fields[]` | object[] | `{ name, type, nullable, maxChars? }`; at least one, unique names |

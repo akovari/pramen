@@ -603,9 +603,14 @@ denominator. Capabilities include:
 - multimodal inputs.
 
 Pramen supports both online and asynchronous execution. `execution: auto`
-selects batch mode for throughput-oriented bounded work when the provider
-supports it, and otherwise uses rate-limited online requests. Pipeline authors
-may require a mode and fail validation if it is unavailable.
+runs the online-vs-batch cost model when the transform declares dispatch
+hints (`expectedRecords`, `deadlineSeconds`, and optional token/rate-card
+overrides): it picks the cheaper mode that still meets the deadline when the
+provider supports batch, and otherwise uses rate-limited online requests.
+Without those hints, auto stays online — the safe default for unbounded or
+unplanned work. Pipeline authors may require a mode and fail validation if it
+is unavailable. The measured (currently mock/stub-calibrated) cost/latency
+frontier lives in `docs/research/e2-1-dispatch-frontier.md` (E2.1 / RQ1).
 
 Initial adapters should cover one direct hosted provider with a real batch API
 and vLLM as the first self-hosted OpenAI-compatible endpoint.

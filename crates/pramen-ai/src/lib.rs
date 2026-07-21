@@ -11,6 +11,8 @@
 //! - [`schema`]: JSON Schema generation from declared output fields and
 //!   strict typed validation of model output;
 //! - [`budget`]: token budgets enforced *before* dispatch;
+//! - [`dispatch`]: online vs provider-batch cost model for `execution: auto`
+//!   and `pramen ai dispatch-plan` frontier sweeps (E2.1 / RQ1);
 //! - [`operator`]: the `ai.extract` / `ai.classify` / `ai.generate`
 //!   transform that plugs into the [`pramen_core::runtime`] dataflow;
 //! - [`review`]: the durable review queue — records routed by
@@ -22,6 +24,7 @@
 //!   crash/replay, incremental re-enrichment, duplicate-heavy savings.
 
 pub mod budget;
+pub mod dispatch;
 pub mod error;
 pub mod eval;
 pub mod ledger;
