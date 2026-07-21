@@ -74,7 +74,9 @@ Everything runs through mise; CI runs the same tasks.
   inference ledger location (default `.pramen/ledger.sqlite`; a
   `postgres://` / `postgresql://` DSN selects the shared Postgres ledger),
   checkpoint `url` accepts `file://…` or the same Postgres schemes for the
-  fleet checkpoint store, and `PRAMEN_OPENAI_API_KEY` supplies the optional
+  fleet checkpoint store, `PRAMEN_WASM_OCI_ALLOWLIST` merges with
+  `runtime.wasmOciAllowlist` for digest-pinned OCI WASM pulls (fail closed
+  when both are empty), and `PRAMEN_OPENAI_API_KEY` supplies the optional
   key for `openai-compat` models.
 - Conventional commits.
 

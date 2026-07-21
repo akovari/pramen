@@ -4,13 +4,13 @@ description: Install Pramen from a release binary or build from source.
 ---
 
 :::note
-v0.1 release binaries are built with `cargo-dist` for Linux (x86_64 and
+Release binaries are built with `cargo-dist` for Linux (x86_64 and
 aarch64, static musl), macOS (aarch64), and Windows (x86_64), plus shell
-and PowerShell installers. Until the `0.1.0` tag ships, build from source
-below.
+and PowerShell installers. Current workspace version is **0.2.0** — build
+from source below until a matching GitHub Release tag is published.
 :::
 
-## Release binaries (v0.1+)
+## Release binaries
 
 When a GitHub Release is published, pick the artifact for your platform:
 

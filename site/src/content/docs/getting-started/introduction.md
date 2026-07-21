@@ -40,10 +40,10 @@ that inference has to be auditable, budgeted, and restart-safe.
 
 ## Current status
 
-Pramen is in early implementation and moving fast. Deterministic pipelines
-(Parquet → SQL → PostgreSQL) run end to end today; semantic transforms,
-Provider-batch execution, upsert sinks, and Azure/GCS are in active
-development.
+Workspace **0.2.0** ships the Phase 1 verticals plus Phase 2 Group X1:
+deterministic and governed-AI pipelines, Azure/GCS sources, WASM (local +
+OCI-by-digest), `ai.generate`, and optional Postgres ledger/checkpoint
+backends. Live cloud acceptance and Phase 2 Group X2 remain open.
 The [status and roadmap](/pramen/project/roadmap/) page tracks exactly what
 works now, and every performance claim on this site links to a
 [measured result](/pramen/project/benchmarks/).

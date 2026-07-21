@@ -186,8 +186,9 @@ Early implementation; no stable public API yet. What runs today:
 
 The model quality-cost frontier table and live cloud acceptance legs
 (S1.1 Bedrock online, S2.1 batch crash/reconcile, P2.1 1M-record run)
-are next on the [Phase 1 workstreams](docs/implementation-plan.md) —
-all blocked on AWS credentials, not code.
+remain blocked on AWS credentials, not code. Phase 2 Group X1
+(WASM + OCI, Azure/GCS, `ai.generate`, shared Postgres backends) is
+merged in **0.2.0**.
 
 Read the [product and architecture direction](docs/architecture.md) for the
 competitive position, proposed runtime, WASM ABI, connector strategy, delivery
@@ -196,24 +197,28 @@ with measurable exit criteria lives in the
 [implementation plan](docs/implementation-plan.md); contributor and agent
 conventions live in [AGENTS.md](AGENTS.md).
 
-## Known limitations (v0.1)
+## Known limitations (v0.2)
 
 Pramen is lean and measured, not feature-complete. Ship with these stated:
 
 - **Single-node, single-connection sink** — no horizontal scaling, no parallel
   COPY, no fan-out DAGs.
-- **PostgreSQL sink only** — ADBC and Flight SQL are post-v1.
+- **PostgreSQL sink only** — ADBC and Flight SQL are Phase 3.
 - **Linear pipelines** — one source, ordered transforms, one sink.
 - **Bedrock batch minimum job size** — the service enforces a minimum records
   per model invocation job (~1,000); smaller `execution: batch` runs fail at
   provider validation.
 - **Cloud acceptance not in CI** — live Bedrock, frontier model runs, and the
   1M-record AWS acceptance test need credentials; PR gates are fully offline.
-- **WASM transforms are Phase 2** — the ABI is spike-validated, not wired in.
+- **OCI signature verification is a hook** — default allow-all; cosign/sigstore
+  and authenticated registry pulls are follow-ups.
 - **Review queue is CLI-only** — no web UI yet.
+- **Shared Postgres backends** — correct for single-writer / at-least-once;
+  exclusive claim leasing for multi-worker fleets is not finished.
 
-The [v0.1 release checklist](docs/release/v0.1-checklist.md) tracks what
-must be green before tagging.
+The [v0.2 release checklist](docs/release/v0.2-checklist.md) tracks what
+must be green before tagging; v0.1 history is in
+[docs/release/v0.1-checklist.md](docs/release/v0.1-checklist.md).
 
 ## Initial decisions
 
@@ -251,16 +256,14 @@ must be green before tagging.
 
 ## Immediate next step
 
-v0.1 ships the offline-first Phase 1 verticals (deterministic ETL, governed
-AI, checkpointed ingestion). Remaining work is cloud acceptance only — it
-does not block the release:
+v0.2 ships Phase 1 plus Phase 2 Group X1 (offline). Remaining:
 
 1. **Live cloud acceptance** (needs AWS credentials): S1.1 Bedrock Converse
    online, S2.1 batch crash/reconcile on real Bedrock, S2.2 model
    quality-cost frontier runs, and P2.1 1M-record S3 → Aurora acceptance.
-2. **Phase 2** (post-v0.1): OCI distribution for WASM components (X1.4),
-   `ai.generate` (X1.7), shared ledger/checkpoint backends (X1.8).
+2. **Phase 2 Group X2**: third-party WASM conformance (X2.1) and a
+   reproducible AWS deployment runbook (X2.2).
 
-See the [v0.1 release checklist](docs/release/v0.1-checklist.md) and
+See the [v0.2 release checklist](docs/release/v0.2-checklist.md) and
 [CONTRIBUTING.md](CONTRIBUTING.md) to build from source or install release
 binaries.

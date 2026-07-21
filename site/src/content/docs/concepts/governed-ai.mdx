@@ -3,11 +3,10 @@ title: Governed AI enrichment
 description: Schema-bound semantic transforms with a durable inference ledger, budgets, and validation.
 ---
 
-:::caution[In development]
-The design below is spike-validated (durable ledger, crash recovery,
-provider adapters) and the production operators are being built now
-(P1.5–P1.12). This page describes the committed contract, not a shipped
-feature.
+:::tip[Shipped in 0.2]
+`ai.extract`, `ai.classify`, and `ai.generate` run today against the
+durable inference ledger (SQLite by default; Postgres via
+`PRAMEN_LEDGER_PATH`). Providers: `mock`, `openai-compat`, `bedrock`.
 :::
 
 Semantic transforms treat a language model call the way a database treats
@@ -31,7 +30,7 @@ instruction, a typed output schema, hard budgets, and a durable record.
 
   <rect class="box-accent" x="480" y="30" width="150" height="64" rx="10" />
   <text class="label" x="555" y="57" text-anchor="middle">Ledger lookup</text>
-  <text class="sublabel" x="555" y="76" text-anchor="middle">SQLite, WAL mode</text>
+  <text class="sublabel" x="555" y="76" text-anchor="middle">SQLite or Postgres</text>
 
   <rect class="box" x="700" y="10" width="140" height="56" rx="10" />
   <text class="label" x="770" y="34" text-anchor="middle">Reuse</text>

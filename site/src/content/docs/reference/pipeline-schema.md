@@ -40,8 +40,9 @@ transforms.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `type` | string | `object_store` |
-| `url` | string | Local path or `file://` today; `s3://` etc. planned |
-| `format.type` | string | `parquet` or `ndjson` (NDJSON execution planned) |
+| `url` | string | Local path / `file://`, `s3://`, `gs://`, `az://` / `abfs(s)://` (and Azure HTTPS hosts) |
+| `location` | string? | Declared storage region/location; **required** when `runtime.residency` is set (cloud sources) |
+| `format.type` | string | `parquet` or `ndjson` |
 
 ## `spec.transforms[]`
 
@@ -77,7 +78,7 @@ Ordered list; may be empty. Every entry needs a unique `id`.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | string | Unique step id |
-| `component` | string | Path to a WebAssembly component (`.wasm`); absolute or relative to the pipeline file |
+| `component` | string | Local `.wasm` path (absolute or relative to the pipeline file), or digest-pinned `oci://registry/repo@sha256:…` (tag-only rejected) |
 | `limits.memoryMb` | int? | Guest linear memory ceiling in mebibytes; default 256 |
 | `limits.fuel` | int? | Wasmtime fuel budget per batch; default 10_000_000_000 |
 | `limits.maxInputMb` | int? | Maximum Arrow IPC input size in mebibytes; default 64 |
@@ -86,6 +87,8 @@ Ordered list; may be empty. Every entry needs a unique `id`.
 The guest implements the WIT ABI in `crates/pramen-wasm/wit/transform.wit`:
 Arrow IPC bytes in, Arrow IPC bytes out. Build a guest from
 `templates/wasm-transform-rust/` and validate with `pramen transform test`.
+OCI pulls are fail-closed unless listed in `runtime.wasmOciAllowlist` or
+`PRAMEN_WASM_OCI_ALLOWLIST`.
 
 ## `spec.sink`
 
@@ -105,7 +108,10 @@ Entirely optional.
 | --- | --- | --- |
 | `targetBatchBytes` | int | Target Arrow batch size; default 8 MiB |
 | `maxInflightBytes` | int | In-flight ceiling; default 256 MiB; must be ≥ `targetBatchBytes` |
-| `checkpoint.url` | string? | Checkpoint directory (local path or `file://`); enables incremental, resumable runs |
+| `checkpoint.url` | string? | Checkpoint store: local path / `file://`, or `postgres://` / `postgresql://` for the shared fleet backend |
+| `wasmOciAllowlist` | string[]? | Digests (`sha256:…`) and/or `registry/repository` prefixes permitted for OCI WASM pulls; empty + empty env denies all OCI pulls |
+| `residency.allowedLocations` | string[]? | When set (non-empty), cloud `source.location` and every `models.*.region` must be in this list |
+| `residency.allowedSchemes` | string[]? | Optional cloud URL scheme allow-list (`s3`, `gs`, `az`, …); local/`file` always permitted |
 
 ## Validation behavior
 
