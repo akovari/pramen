@@ -382,6 +382,14 @@ benchmark baselines locked as regression references.
 - **E2.2** RQ2 memoization semantics: formalize the reuse contract; measure
   savings under crash/replay, incremental re-enrichment, duplicate-heavy
   workloads.
+  *Done 2026-07-21: reuse contract in `docs/research/rq2-memoization.md`
+  (work-key inputs, immutability, invalidation, crash/reconcile vs
+  re-bill, review-queue interactions); offline measurement suite in
+  `pramen_ai::reuse` + `scripts/rq2-memoization.sh` publishing
+  `docs/research/rq2-memoization-metrics.json` — 100% reuse / 0 tokens on
+  online replay, 0 rebill on batch reconcile, only changed+new keys
+  re-billed on incremental (10/45), 90% savings on 200-row/20-unique
+  duplicate workload; CI-pinned by `cargo test -p pramen-ai reuse`.*
 - **E2.3** RQ3 comparative evaluation: equivalent enrichment task on Redpanda
   Connect (`aws_bedrock_chat`), warehouse AI SQL, and DocETL; throughput, cost
   per accepted row, golden-set quality.

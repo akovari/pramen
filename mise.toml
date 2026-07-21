@@ -49,6 +49,10 @@ run = "cargo bench --workspace"
 description = "End-to-end benchmark suite (needs PRAMEN_POSTGRES_DSN)"
 run = "./scripts/bench.sh"
 
+[tasks.rq2-memoization]
+description = "Regenerate RQ2 memoization metrics (offline mock + ledger)"
+run = "./scripts/rq2-memoization.sh"
+
 [tasks.perf-gate]
 description = "Perf regression gate: designated benches vs the merge-base"
 run = "./scripts/perf-gate.sh"

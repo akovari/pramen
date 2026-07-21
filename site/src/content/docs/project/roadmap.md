@@ -59,7 +59,9 @@ This page is the honest summary. Workspace version: **0.2.0**.
 - **Phase 2 Group X2**: third-party WASM conformance proof (X2.1);
   reproducible AWS deployment runbook (X2.2).
 - **Phase 3**: ADBC / Flight SQL sinks, fan-out DAGs, connector SDK,
-  research paper program (E1/E2).
+  research paper program (E1/E2). RQ2 memoization semantics (E2.2) are
+  formalized and measured offline — see
+  [governed AI reuse contract](/pramen/concepts/governed-ai/#reuse-contract-rq2).
 
 ## Engineering standards
 
