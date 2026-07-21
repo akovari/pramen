@@ -1,0 +1,61 @@
+# Example AWS vertical: S3 Parquet → SQL → governed extract → Postgres.
+# Pair with deploy/examples/env.example (or systemd/pramen.env.example).
+#
+#   set -a && source deploy/examples/env.example && set +a
+#   pramen validate deploy/examples/aws-s3-to-aurora.yaml
+#   pramen run --smoke --log-format json \
+#     --otlp-endpoint "${PRAMEN_OTLP_ENDPOINT}" \
+#     deploy/examples/aws-s3-to-aurora.yaml
+#
+# Replace bucket / table names before a real run. No secrets in this file.
+
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: aws-s3-to-aurora
+spec:
+  models:
+    enrichment:
+      provider: bedrock
+      model: anthropic.claude-3-haiku-20240307-v1:0
+      region: eu-central-1
+  source:
+    type: object_store
+    url: s3://CHANGE_ME-pramen-input/events/
+    format:
+      type: parquet
+  transforms:
+    - id: normalize
+      type: sql
+      query: >
+        SELECT ticket_id, lower(trim(description)) AS description, created_at
+        FROM input
+        WHERE description IS NOT NULL
+    - id: classify
+      type: ai.extract
+      model: enrichment
+      execution: auto
+      inputs: [description]
+      instruction: Classify the record into a business category and explain why.
+      output:
+        fields:
+          - { name: category, type: utf8, nullable: false }
+          - { name: rationale, type: utf8, nullable: false }
+      validation:
+        onInvalid: review
+      budget:
+        maxInputTokensPerRecord: 4096
+        maxOutputTokensPerRecord: 256
+  sink:
+    type: postgres
+    target: analytics.enriched_events
+    mode: append
+  runtime:
+    targetBatchBytes: 8388608
+    maxInflightBytes: 268435456
+    residency:
+      allowedLocations: [eu-central-1]
+      allowedSchemes: [s3]
+    checkpoint:
+      # Prefer postgres://… for multi-host fleets; file:// for a single worker.
+      url: file:///var/lib/pramen/checkpoints/

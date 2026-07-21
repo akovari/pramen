@@ -1,0 +1,17 @@
+# Periodic incremental runs. Requires pramen.service.
+#
+#   install -m 0644 deploy/systemd/pramen.timer /etc/systemd/system/
+#   systemctl enable --now pramen.timer
+
+[Unit]
+Description=Run Pramen pipeline on a schedule
+Documentation=https://akovari.github.io/pramen/cookbook/aws-deploy/
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=pramen.service
+
+[Install]
+WantedBy=timers.target

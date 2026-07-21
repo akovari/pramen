@@ -61,6 +61,10 @@ run = "./scripts/release-quickstart.sh"
 description = "Remove Rust build artifacts (frees target/ disk space)"
 run = "rm -rf target spikes/*/target"
 
+[tasks.validate-deploy]
+description = "Offline smoke check for deploy/ artifacts (X2.2; no AWS)"
+run = "./scripts/validate-deploy.sh"
+
 [tasks.ci]
 description = "The full local gate; identical checks run in GitHub Actions"
-depends = ["lint", "deny", "test", "docs"]
+depends = ["lint", "deny", "test", "docs", "validate-deploy"]

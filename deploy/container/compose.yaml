@@ -1,0 +1,69 @@
+# Local / lab profile: Pramen + Postgres + OTLP collector.
+# Does not call AWS. Point the example pipeline at local/MinIO paths or
+# leave Bedrock transforms out for a deterministic smoke.
+#
+#   cp deploy/examples/env.example deploy/container/.env
+#   # edit .env — no real secrets in git
+#   docker compose -f deploy/container/compose.yaml up --build
+#
+# Run a pipeline once:
+#   docker compose -f deploy/container/compose.yaml run --rm pramen \
+#     run --log-format json --otlp-endpoint http://otel-collector:4318 \
+#     /etc/pramen/pipeline.yaml
+
+name: pramen
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_USER: pramen
+      POSTGRES_PASSWORD: pramen
+      POSTGRES_DB: pramen
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pramen -d pramen"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus exporter (scrape for Grafana)
+
+  pramen:
+    build:
+      context: ../..
+      dockerfile: deploy/container/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PRAMEN_POSTGRES_DSN: postgres://pramen:pramen@postgres:5432/pramen
+      PRAMEN_LEDGER_PATH: /var/lib/pramen/ledger/ledger.sqlite
+      PRAMEN_OTLP_ENDPOINT: http://otel-collector:4318
+      AWS_REGION: ${AWS_REGION:-eu-central-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-eu-central-1}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - ./../examples/aws-s3-to-aurora.yaml:/etc/pramen/pipeline.yaml:ro
+      - pramen-state:/var/lib/pramen
+    # Default: show CLI help. Override with `run` as in the header comment.
+    profiles: ["manual"]
+
+volumes:
+  pgdata:
+  pramen-state:

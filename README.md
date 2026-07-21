@@ -261,8 +261,11 @@ v0.2 ships Phase 1 plus Phase 2 Group X1 (offline). Remaining:
 1. **Live cloud acceptance** (needs AWS credentials): S1.1 Bedrock Converse
    online, S2.1 batch crash/reconcile on real Bedrock, S2.2 model
    quality-cost frontier runs, and P2.1 1M-record S3 → Aurora acceptance.
-2. **Phase 2 Group X2**: third-party WASM conformance (X2.1) and a
-   reproducible AWS deployment runbook (X2.2).
+2. **Phase 2 Group X2**: third-party WASM conformance (X2.1). X2.2 deploy
+   artifacts and runbook are in-tree (`deploy/`,
+   [docs/deploy/aws-runbook.md](docs/deploy/aws-runbook.md), site cookbook
+   [Deploying on AWS](https://akovari.github.io/pramen/cookbook/aws-deploy/));
+   live AWS apply remains credentials-gated.
 
 See the [v0.2 release checklist](docs/release/v0.2-checklist.md) and
 [CONTRIBUTING.md](CONTRIBUTING.md) to build from source or install release
