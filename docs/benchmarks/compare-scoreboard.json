@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "title": "Pramen competitive scoreboard",
+  "policy": {
+    "offline": "Regenerate on PRs that touch load path, COPY, ledger/reuse, bench, or compare harness (`mise run compare-scoreboard`). CI runs `--check`.",
+    "cloud": "Competitor AI / warehouse legs are env-gated and budget-capped; not required for PR green."
+  },
+  "generatedAt": "2026-07-21T10:06:14Z",
+  "sources": [
+    "docs/benchmarks/2026-07-12-v1.md",
+    "docs/spikes/s1-3-postgres-copy.md",
+    "docs/research/rq2-memoization-metrics.json"
+  ],
+  "scenarios": [
+    {
+      "id": "pg-load-path",
+      "title": "Parquet \u2192 SQL \u2192 PostgreSQL load path",
+      "status": "measured",
+      "report": "docs/benchmarks/2026-07-12-v1.md",
+      "notes": "Wall time on like-for-like PostgreSQL load is server-dominated; CPU is the clearer differentiator. Machine: Apple M3 laptop \u2014 relative evidence, not a cloud SLA.",
+      "rows": [
+        {
+          "system": "Pramen \u2192 PostgreSQL (binary COPY)",
+          "metric": "rows_out_per_s",
+          "value": "434k\u2013581k",
+          "detail": "wall 6.9\u20139.2 s; CPU 1.2\u20131.4 s; ~0.5 GiB RSS (3 runs)"
+        },
+        {
+          "system": "DuckDB \u2192 PostgreSQL (postgres extension)",
+          "metric": "rows_out_per_s",
+          "value": "403k\u2013620k",
+          "detail": "wall tie with Pramen; CPU 6.9\u201310.9 s; ~45 MiB RSS"
+        },
+        {
+          "system": "DataFusion direct (no sink)",
+          "metric": "rows_out_per_s",
+          "value": "~4.0M",
+          "detail": "engine ceiling for the same SQL; exposes load-path cost"
+        },
+        {
+          "system": "DuckDB \u2192 native table (no PostgreSQL)",
+          "metric": "rows_out_per_s",
+          "value": "~8.2M",
+          "detail": "not a PostgreSQL load \u2014 cheapest possible destination"
+        }
+      ]
+    },
+    {
+      "id": "psql-copy",
+      "title": "Binary COPY vs psql text \\copy",
+      "status": "measured",
+      "report": "docs/spikes/s1-3-postgres-copy.md",
+      "notes": "5M rows \u00d7 6 columns, PostgreSQL 17, single connection.",
+      "rows": [
+        {
+          "system": "Pramen binary COPY encoder",
+          "metric": "rows_per_s",
+          "value": "367000",
+          "detail": "13.6 s wall"
+        },
+        {
+          "system": "psql \\copy from CSV",
+          "metric": "rows_per_s",
+          "value": "117000",
+          "detail": "42.8 s wall \u2014 Pramen 3.1\u00d7 faster on this fixture"
+        }
+      ]
+    },
+    {
+      "id": "memoization-reuse",
+      "title": "Semantic result reuse vs naive re-dispatch",
+      "status": "measured",
+      "report": "docs/research/rq2-memoization.md",
+      "metricsRef": "docs/research/rq2-memoization-metrics.json",
+      "notes": "Offline mock provider + SQLite ledger. Live Bedrock confirmation deferred to S2.2.",
+      "rows": [
+        {
+          "system": "Pramen ledger replay (online)",
+          "metric": "reuse_pct",
+          "value": "100",
+          "detail": "0 provider calls / 0 tokens on replay"
+        },
+        {
+          "system": "Pramen batch crash reconcile",
+          "metric": "rebill_calls",
+          "value": "0",
+          "detail": "24/24 rows recovered without re-submit billing"
+        },
+        {
+          "system": "Pramen duplicate-heavy (200/20 unique)",
+          "metric": "savings_pct_vs_naive",
+          "value": "90",
+          "detail": "vs per-row dispatch with no ledger"
+        }
+      ]
+    },
+    {
+      "id": "redpanda-connect-ai",
+      "title": "Governed enrichment vs Redpanda Connect AI processor",
+      "status": "harness_ready",
+      "report": null,
+      "harness": "compare/redpanda-connect/",
+      "notes": "Config scaffold checked in. Run with COMPARE_REDPANDA=1 and provider credentials; publish a dated report under docs/benchmarks/ before flipping status to measured.",
+      "rows": []
+    },
+    {
+      "id": "docetl-extract",
+      "title": "Structured extraction vs DocETL",
+      "status": "harness_ready",
+      "report": null,
+      "harness": "compare/docetl/",
+      "notes": "Pipeline scaffold checked in. Run with COMPARE_DOCETL=1; publish dated report before measured.",
+      "rows": []
+    },
+    {
+      "id": "warehouse-ai-sql",
+      "title": "Operational PG enrich vs in-warehouse AI SQL",
+      "status": "deferred",
+      "report": null,
+      "notes": "Qualitative only until a budgeted L3 harness exists (Databricks ai_query / Snowflake Cortex / BigQuery AI.GENERATE_TABLE). See orientation for when the warehouse wins.",
+      "rows": []
+    }
+  ]
+}

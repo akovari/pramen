@@ -107,6 +107,28 @@ Where that combination wins today:
 The full [architecture document](docs/architecture.md) names the competing
 systems and states honestly where each remains the better choice.
 
+### Compared to alternatives (measured)
+
+Public orientation + scoreboard:
+[Compared to alternatives](https://akovari.github.io/pramen/project/comparison/)
+([orientation](docs/compare/orientation.md),
+[scoreboard](docs/benchmarks/compare-scoreboard.md)).
+
+Headline numbers (each links a report — laptop-relative, not a cloud SLA):
+
+- **PostgreSQL load:** Pramen 434k–581k rows/s out vs DuckDB→PG wall-time
+  tie at ~7× less CPU
+  ([bench v1](docs/benchmarks/2026-07-12-v1.md)); binary COPY **3.1×**
+  `psql \copy` ([S1.3](docs/spikes/s1-3-postgres-copy.md)).
+- **Semantic reuse (offline):** 100% replay reuse / 0 rebill on batch
+  reconcile / 90% savings on duplicate-heavy fixtures
+  ([RQ2](docs/research/rq2-memoization.md)).
+- **Redpanda Connect AI / DocETL / warehouse AI SQL:** harnesses under
+  [`compare/`](compare/) — `harness_ready`, not yet measured in CI.
+
+Agents regenerate the scoreboard with `mise run compare-scoreboard` when
+load path, ledger, or compare harnesses change (see `AGENTS.md`).
+
 ## Current status
 
 Early implementation; no stable public API yet. What runs today:

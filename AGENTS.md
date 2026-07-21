@@ -92,3 +92,32 @@ missing, add it in the same PR rather than improvising a synonym.
   designated benches fails CI and needs an ADR to accept.
 - Any code path that can call a paid model must enforce budget ceilings
   before dispatch and must be covered by a test with a mock provider.
+
+## Competitive comparison discipline
+
+Public comparisons are split so prose and numbers do not fight:
+
+| Artifact | Role |
+| --- | --- |
+| `docs/compare/orientation.md` | Hand-written “when to choose what” (qualitative) |
+| `docs/benchmarks/compare-scoreboard.{json,md}` | Generated scoreboard — **do not hand-edit the `.md`** |
+| `site/.../project/comparison.md` | Public page composing both |
+| `compare/<competitor>/` | Harness scaffolds (Redpanda Connect, DocETL, …) |
+| `docs/superpowers/specs/2026-07-21-competitive-comparison-design.md` | Design authority for this track |
+
+**Rules for agents:**
+
+1. **No numeric claim** on the site or README without a link to a dated
+   report under `docs/benchmarks/`, `docs/spikes/`, or `docs/research/`.
+2. **Offline refresh on relevant merges.** If you change the load path,
+   COPY encoder, ledger/reuse, `scripts/bench.sh`, RQ2 harness, or anything
+   under `compare/`, run `mise run compare-scoreboard` in the same change
+   and keep `compare-scoreboard --check` green (wired into `mise run ci`).
+3. **Competitor AI / warehouse legs stay env-gated** (`COMPARE_REDPANDA=1`,
+   `COMPARE_DOCETL=1`, cloud credentials). Do not put paid runs in PR CI.
+   Flip a scoreboard scenario from `harness_ready` to `measured` only after
+   publishing a dated report and updating the JSON rows.
+4. Prefer updating orientation prose when product position changes;
+   prefer updating the scoreboard when measurements change.
+5. E2.3 (full comparative evaluation) consumes this harness — extend
+   scenarios rather than inventing a parallel table.

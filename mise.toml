@@ -81,6 +81,14 @@ run = "cargo run -p pramen --quiet -- transform test --component examples/extern
 description = "Offline smoke check for deploy/ artifacts (X2.2; no AWS)"
 run = "./scripts/validate-deploy.sh"
 
+[tasks.compare-scoreboard]
+description = "Regenerate competitive scoreboard from JSON + RQ2 metrics"
+run = "./scripts/compare-scoreboard.sh"
+
+[tasks.compare-scoreboard-check]
+description = "Fail if compare-scoreboard.md/json is stale"
+run = "./scripts/compare-scoreboard.sh --check"
+
 [tasks.ci]
 description = "The full local gate; identical checks run in GitHub Actions"
-depends = ["lint", "deny", "test", "docs", "validate-deploy"]
+depends = ["lint", "deny", "test", "docs", "validate-deploy", "compare-scoreboard-check"]

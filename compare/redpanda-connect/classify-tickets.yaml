@@ -1,0 +1,25 @@
+# Scaffold: Redpanda Connect pipeline roughly comparable to
+# examples/local-tickets-ai-classify.yaml. Not executed in CI.
+#
+# Replace credential placeholders before COMPARE_REDPANDA=1 runs.
+# Docs: https://docs.redpanda.com/redpanda-connect/
+
+input:
+  file:
+    paths: [./fixtures/tickets.ndjson]
+    scanner:
+      lines: {}
+
+pipeline:
+  processors:
+    - aws_bedrock_chat:
+        model: anthropic.claude-3-haiku-20240307-v1:0
+        region: eu-central-1
+        prompt: |
+          Classify the support ticket into a category and estimate a
+          confidence score between 0 and 1. Ticket: ${! content() }
+
+output:
+  file:
+    path: ./out/classified.ndjson
+    codec: lines

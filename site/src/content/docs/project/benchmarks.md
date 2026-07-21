@@ -9,8 +9,11 @@ spike reports in
 [`docs/spikes/`](https://github.com/akovari/pramen/tree/main/docs/spikes),
 benchmark-suite reports in
 [`docs/benchmarks/`](https://github.com/akovari/pramen/tree/main/docs/benchmarks).
-These are the headline results so far. All numbers below are from an Apple
-Silicon laptop; treat them as relative evidence, not absolute promises.
+For buyer-oriented positioning against alternatives, see
+[Compared to alternatives](/pramen/project/comparison/) (orientation +
+generated scoreboard). These are the headline results so far. All numbers below are
+from an Apple Silicon laptop; treat them as relative evidence, not absolute
+promises.
 
 ## Benchmark suite v1 (reproducible)
 

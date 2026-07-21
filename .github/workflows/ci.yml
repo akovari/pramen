@@ -117,6 +117,14 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./scripts/validate-deploy.sh
 
+  compare-scoreboard:
+    # Competitive scoreboard: fail if Markdown/JSON drift from generator.
+    name: Compare scoreboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/compare-scoreboard.sh --check
+
   docs:
     name: Docs
     runs-on: ubuntu-latest

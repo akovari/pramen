@@ -1,0 +1,25 @@
+# Scaffold DocETL pipeline — not executed in CI.
+# Align prompts/schema with corpora/ support-ticket golden set before runs.
+datasets:
+  tickets:
+    type: file
+    path: ../../corpora/support-tickets/tickets.jsonl
+
+default_model: gpt-4o-mini
+
+operations:
+  - name: classify
+    type: map
+    prompt: |
+      Classify each support ticket into category and confidence in [0,1].
+      Ticket: {{ input.description }}
+    output:
+      schema:
+        category: str
+        confidence: float
+
+pipeline:
+  steps:
+    - name: enrich
+      input: tickets
+      operations: [classify]

@@ -64,11 +64,12 @@ This page is the honest summary. Workspace version: **0.2.0**.
   connector SDK.
 - **Phase 3 research**: E2.1 offline dispatch model + mock frontier and
   E2.2 memoization contract/measurements are published under
-  [`docs/research/`](https://github.com/akovari/pramen/tree/main/docs/research);
-  open: E2.3 comparative eval, E2.4 reproducibility harness, E2.5 paper.
-  Live Bedrock frontier remains tied to S2.2. RQ2 memoization semantics (E2.2) are
-  formalized and measured offline — see
-  [governed AI reuse contract](/pramen/concepts/governed-ai/#reuse-contract-rq2).
+  [`docs/research/`](https://github.com/akovari/pramen/tree/main/docs/research).
+  E2.3 scaffolding shipped: [Compared to alternatives](/pramen/project/comparison/)
+  (orientation + generated scoreboard + `compare/` harnesses); measured
+  competitor AI / warehouse legs still open. Also open: E2.4 reproducibility
+  harness, E2.5 paper. Live Bedrock frontier remains tied to S2.2.
+  [Governed AI reuse contract](/pramen/concepts/governed-ai/#reuse-contract-rq2).
 
 ## Engineering standards
 
