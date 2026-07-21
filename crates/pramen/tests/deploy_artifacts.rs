@@ -3,6 +3,8 @@
 //! Mirrors `scripts/validate-deploy.sh` so `cargo nextest` fails if the
 //! systemd units, Grafana dashboard, or example pipeline drift.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
@@ -62,8 +64,7 @@ fn env_templates_expose_runtime_knobs_without_secrets() {
 #[test]
 fn grafana_dashboard_parses_and_names_real_otlp_metrics() {
     let raw = read("deploy/grafana/pramen-runtime.json");
-    let value: serde_json::Value =
-        serde_json::from_str(&raw).expect("grafana JSON must parse");
+    let value: serde_json::Value = serde_json::from_str(&raw).expect("grafana JSON must parse");
     assert_eq!(value["uid"], "pramen-runtime-otlp");
     assert!(value["panels"].as_array().is_some_and(|p| p.len() >= 4));
     for metric in [
