@@ -27,8 +27,9 @@ serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-# `time` for the provider-batch poll interval.
-tokio = { workspace = true, features = ["time"] }
+# `time` for the provider-batch poll interval; `rt`/`net` for the Postgres ledger.
+tokio = { workspace = true, features = ["time", "rt", "net", "sync"] }
+tokio-postgres = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
@@ -36,7 +37,8 @@ criterion = { workspace = true }
 # The Bedrock batch L2 test inspects staged S3 objects directly.
 object_store = { workspace = true }
 pramen-testkit = { path = "../pramen-testkit" }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+tokio-postgres = { workspace = true }
 
 [[bench]]
 name = "governance"

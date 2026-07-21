@@ -2,9 +2,10 @@
 //! output failed validation under `onInvalid: review`, and re-ingestion
 //! of human decisions into the ledger.
 //!
-//! The queue lives in the same SQLite database as the ledger, so a queued
-//! item is exactly one join away from its full work specification (inputs,
-//! instruction, declared output schema) and its provenance. Lifecycle:
+//! The queue lives in the same ledger database as work items (SQLite local
+//! default, or the shared Postgres `pramen_*` tables for fleet
+//! deployments), so a queued item is exactly one join away from its full
+//! work specification and provenance. Lifecycle:
 //!
 //! ```text
 //! pending ──► accepted   (corrected output validated + completed in the
@@ -20,7 +21,6 @@ use crate::error::AiError;
 use crate::ledger::{Ledger, RecordedResult};
 use crate::schema::validate_output;
 use pramen_core::spec::{FieldSpec, FieldType};
-use rusqlite::{OptionalExtension, params};
 use serde_json::Value;
 
 /// Provider/model identity recorded for human-accepted results.
@@ -38,7 +38,7 @@ pub enum ReviewStatus {
 }
 
 impl ReviewStatus {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::Accepted => "accepted",
@@ -46,7 +46,7 @@ impl ReviewStatus {
         }
     }
 
-    fn parse(text: &str) -> Self {
+    pub(crate) fn parse(text: &str) -> Self {
         match text {
             "accepted" => Self::Accepted,
             "rejected" => Self::Rejected,
@@ -76,77 +76,6 @@ pub struct ReviewItem {
 }
 
 impl Ledger {
-    /// Durably route one record to review. Idempotent per work key: a
-    /// record already queued (from this run or an earlier one) keeps its
-    /// first entry, so replays never duplicate the queue.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AiError::Ledger`] on database failure.
-    pub fn enqueue_review(
-        &self,
-        work_key: &str,
-        transform_id: &str,
-        reason: &str,
-        raw_output: Option<&str>,
-    ) -> Result<(), AiError> {
-        self.connection().execute(
-            "INSERT INTO review_queue (work_key, transform_id, reason, raw_output)
-             VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(work_key) DO NOTHING",
-            params![work_key, transform_id, reason, raw_output],
-        )?;
-        Ok(())
-    }
-
-    /// The decision state of a work key, or `None` when it was never
-    /// routed to review.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AiError::Ledger`] on database failure.
-    pub fn review_status(&self, work_key: &str) -> Result<Option<ReviewStatus>, AiError> {
-        self.connection()
-            .query_row(
-                "SELECT status FROM review_queue WHERE work_key = ?1",
-                params![work_key],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map(|status| status.map(|s| ReviewStatus::parse(&s)))
-            .map_err(AiError::from)
-    }
-
-    /// Queued items awaiting a decision, oldest first, joined with their
-    /// work specifications.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AiError::Ledger`] on database failure.
-    pub fn pending_reviews(&self) -> Result<Vec<ReviewItem>, AiError> {
-        let mut stmt = self.connection().prepare(
-            "SELECT r.work_key, r.transform_id, r.reason, r.raw_output, r.status,
-                    r.created_at, w.spec_json
-             FROM review_queue r JOIN work_items w ON w.work_key = r.work_key
-             WHERE r.status = 'pending'
-             ORDER BY r.created_at, r.work_key",
-        )?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(ReviewItem {
-                    work_key: row.get(0)?,
-                    transform_id: row.get(1)?,
-                    reason: row.get(2)?,
-                    raw_output: row.get(3)?,
-                    status: ReviewStatus::parse(&row.get::<_, String>(4)?),
-                    created_at: row.get(5)?,
-                    spec: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or(Value::Null),
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
-    }
-
     /// Accept a human-corrected output for a queued item.
     ///
     /// The correction is validated against the output schema stored in
@@ -202,23 +131,6 @@ impl Ledger {
         self.decide_review(work_key, ReviewStatus::Rejected)
     }
 
-    /// Queue counts: `(pending, accepted, rejected)`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AiError::Ledger`] on database failure.
-    pub fn review_counts(&self) -> Result<(u64, u64, u64), AiError> {
-        let count = |status: &str| -> Result<u64, AiError> {
-            let n: i64 = self.connection().query_row(
-                "SELECT COUNT(*) FROM review_queue WHERE status = ?1",
-                params![status],
-                |r| r.get(0),
-            )?;
-            Ok(u64::try_from(n).unwrap_or_default())
-        };
-        Ok((count("pending")?, count("accepted")?, count("rejected")?))
-    }
-
     /// One pending item by key, or a clear error.
     fn pending_review(&self, work_key: &str) -> Result<ReviewItem, AiError> {
         self.pending_reviews()?
@@ -230,16 +142,6 @@ impl Ledger {
                      `pramen ai review list` shows the queue"
                 ))
             })
-    }
-
-    fn decide_review(&self, work_key: &str, status: ReviewStatus) -> Result<(), AiError> {
-        self.connection().execute(
-            "UPDATE review_queue
-             SET status = ?2, decided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE work_key = ?1 AND status = 'pending'",
-            params![work_key, status.as_str()],
-        )?;
-        Ok(())
     }
 }
 
@@ -333,7 +235,6 @@ mod tests {
     fn enqueue_is_idempotent_and_listable() {
         let (path, ledger) = temp_ledger("enqueue");
         let key = enqueue(&ledger, &spec());
-        // A replay routing the same record again does not duplicate it.
         ledger
             .enqueue_review(&key, "classify", "second reason", None)
             .unwrap();
@@ -357,14 +258,11 @@ mod tests {
         let (path, ledger) = temp_ledger("accept");
         let key = enqueue(&ledger, &spec());
 
-        // A correction violating the declared schema is refused.
         let error = ledger
             .accept_review(&key, &json!({"category": 3, "score": 0.5}))
             .unwrap_err();
         assert!(error.to_string().contains("violates"), "{error}");
 
-        // A valid correction becomes a completed, human-attributed,
-        // zero-token ledger result.
         ledger
             .accept_review(&key, &json!({"category": "hardware", "score": null}))
             .unwrap();
@@ -380,7 +278,6 @@ mod tests {
         assert_eq!(recorded.input_tokens + recorded.output_tokens, 0);
         assert_eq!(ledger.review_counts().unwrap(), (0, 1, 0));
 
-        // Deciding twice is refused.
         assert!(ledger.accept_review(&key, &json!({})).is_err());
         let _ = std::fs::remove_file(path);
     }
@@ -395,8 +292,6 @@ mod tests {
             Some(ReviewStatus::Rejected)
         );
         assert_eq!(ledger.review_counts().unwrap(), (0, 0, 1));
-        // The work item stays failed (never completed): the operator
-        // consults the rejected status and drops without re-dispatch.
         assert!(matches!(
             ledger.state(&key).unwrap(),
             Some(WorkState::Failed { .. })

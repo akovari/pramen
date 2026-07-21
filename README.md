@@ -120,9 +120,10 @@ Early implementation; no stable public API yet. What runs today:
   bounded channels, backpressure, Ctrl-C cancellation, and a run summary
   (see [examples/local-parquet-to-postgres.yaml](examples/local-parquet-to-postgres.yaml));
 - checkpointed incremental runs (ADR 0006): file-granular work units on a
-  crash-safe append-only store — replaying a finished run loads nothing, a
-  grown directory (or `s3://` prefix — unit identity from a single `LIST`,
-  MinIO-verified) loads only new files;
+  crash-safe append-only store (`file://…` locally, or `postgres://…` /
+  `postgresql://…` for the shared fleet store) — replaying a finished run
+  loads nothing, a grown directory (or `s3://` prefix — unit identity from
+  a single `LIST`, MinIO-verified) loads only new files;
 - `upsert` sink mode: stage + `ON CONFLICT` merge on declared keys, so
   replays are idempotent — the at-least-once contract is pinned by tests
   on both sides (append duplicates, upsert does not);
@@ -130,11 +131,13 @@ Early implementation; no stable public API yet. What runs today:
   stays free) and an always-armed circuit breaker against invalid-output
   spikes;
 - governed semantic transforms run today: `ai.extract` / `ai.classify` on
-  the durable SQLite (WAL) inference ledger — content-addressed work keys,
-  result reuse on replay, pre-dispatch token budgets, and strict typed
-  output validation — with three providers: deterministic `mock`, any
-  OpenAI-compatible endpoint (vLLM, Ollama, llama.cpp), and Amazon Bedrock
-  Converse (stub-tested offline per ADR 0005); see
+  the durable inference ledger (SQLite WAL by default; set
+  `PRAMEN_LEDGER_PATH` to a `postgres://` DSN for the shared fleet backend)
+  — content-addressed work keys, result reuse on replay, pre-dispatch token
+  budgets, and strict typed output validation — with three providers:
+  deterministic `mock`, any OpenAI-compatible endpoint (vLLM, Ollama,
+  llama.cpp), and Amazon Bedrock Converse (stub-tested offline per ADR
+  0005); see
   [examples/local-tickets-ai-classify.yaml](examples/local-tickets-ai-classify.yaml)
   and `pramen ai status`;
 - provider-batch execution runs today (`execution: batch`): misses are

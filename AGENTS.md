@@ -64,9 +64,11 @@ Everything runs through mise; CI runs the same tasks.
   at a local MinIO (`AWS_ENDPOINT=http://localhost:9000`,
   `AWS_ALLOW_HTTP=true`).
 - Runtime environment variables: `PRAMEN_LEDGER_PATH` overrides the
-  inference ledger location (default `.pramen/ledger.sqlite`), and
-  `PRAMEN_OPENAI_API_KEY` supplies the optional key for `openai-compat`
-  models.
+  inference ledger location (default `.pramen/ledger.sqlite`; a
+  `postgres://` / `postgresql://` DSN selects the shared Postgres ledger),
+  checkpoint `url` accepts `file://…` or the same Postgres schemes for the
+  fleet checkpoint store, and `PRAMEN_OPENAI_API_KEY` supplies the optional
+  key for `openai-compat` models.
 - Conventional commits.
 
 ## Vocabulary discipline
