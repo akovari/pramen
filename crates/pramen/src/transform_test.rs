@@ -88,6 +88,12 @@ fn fixture_batch(rows: usize) -> Result<RecordBatch, String> {
 mod tests {
     use super::*;
 
+    /// Checked-in X2.1 third-party guest (authored outside the SDK template).
+    const EXTERNAL_GUEST_FIXTURE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/external-wasm-guest/dist/acme_gross.wasm"
+    );
+
     #[test]
     fn s1_4_fixture_passes_conformance() {
         execute(&TransformTestArgs {
@@ -95,5 +101,15 @@ mod tests {
             rows: 256,
         })
         .expect("conformance");
+    }
+
+    /// X2.1: a guest authored outside `templates/` passes the same suite.
+    #[test]
+    fn third_party_external_guest_passes_conformance() {
+        execute(&TransformTestArgs {
+            component: PathBuf::from(EXTERNAL_GUEST_FIXTURE),
+            rows: 256,
+        })
+        .expect("third-party conformance");
     }
 }

@@ -7,4 +7,5 @@ lcov.info
 mise.local.toml
 /.pramen
 /spikes/**/target
+/examples/external-wasm-guest/guest/target
 .worktrees/
