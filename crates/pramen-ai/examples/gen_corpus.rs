@@ -207,21 +207,25 @@ fn main() {
                 name: "category".into(),
                 field_type: FieldType::Utf8,
                 nullable: false,
+                max_chars: None,
             },
             FieldSpec {
                 name: "priority".into(),
                 field_type: FieldType::Utf8,
                 nullable: false,
+                max_chars: None,
             },
             FieldSpec {
                 name: "product".into(),
                 field_type: FieldType::Utf8,
                 nullable: true,
+                max_chars: None,
             },
             FieldSpec {
                 name: "requires_review".into(),
                 field_type: FieldType::Bool,
                 nullable: false,
+                max_chars: None,
             },
         ],
         weights: BTreeMap::from([

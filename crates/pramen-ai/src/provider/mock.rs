@@ -77,7 +77,8 @@ impl MockProvider {
             digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
         ]);
 
-        // Fabricate a value per declared property, honoring its type.
+        // Fabricate a value per declared property, honoring its type and
+        // any maxLength bound so bounded `ai.generate` fields stay valid.
         let mut output = Map::new();
         if let Some(properties) = request
             .output_schema
@@ -86,12 +87,29 @@ impl MockProvider {
         {
             for (index, (name, prop)) in properties.iter().enumerate() {
                 let salt = seed.wrapping_add(index as u64);
-                let type_name = prop.get("type").and_then(Value::as_str).unwrap_or("string");
+                let type_name = match prop.get("type") {
+                    Some(Value::String(t)) => t.as_str(),
+                    Some(Value::Array(types)) => types
+                        .iter()
+                        .find_map(Value::as_str)
+                        .filter(|t| *t != "null")
+                        .unwrap_or("string"),
+                    _ => "string",
+                };
                 let value = match type_name {
                     "integer" => json!((salt % 1000) as i64),
                     "number" => json!((salt % 1000) as f64 / 10.0),
                     "boolean" => json!(salt % 2 == 0),
-                    _ => json!(format!("{name}-{:04x}", salt % 0xFFFF)),
+                    _ => {
+                        let mut text = format!("{name}-{:04x}", salt % 0xFFFF);
+                        if let Some(max) = prop.get("maxLength").and_then(Value::as_u64) {
+                            let max = usize::try_from(max).unwrap_or(usize::MAX);
+                            if text.chars().count() > max {
+                                text = text.chars().take(max).collect();
+                            }
+                        }
+                        json!(text)
+                    }
                 };
                 output.insert(name.clone(), value);
             }

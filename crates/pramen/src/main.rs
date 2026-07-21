@@ -369,10 +369,14 @@ fn explain(spec: &PipelineSpec) {
             TransformSpec::Sql(sql) => {
                 println!("  transform {}: sql", sql.id);
             }
-            TransformSpec::AiExtract(ai) | TransformSpec::AiClassify(ai) => {
+            TransformSpec::AiExtract(ai)
+            | TransformSpec::AiClassify(ai)
+            | TransformSpec::AiGenerate(ai) => {
                 let kind = match transform {
                     TransformSpec::AiExtract(_) => "ai.extract",
-                    _ => "ai.classify",
+                    TransformSpec::AiClassify(_) => "ai.classify",
+                    TransformSpec::AiGenerate(_) => "ai.generate",
+                    _ => unreachable!("matched only AI transforms"),
                 };
                 let model = spec.spec.models.get(&ai.model);
                 let provider = model.map_or("?", |m| m.provider.as_str());

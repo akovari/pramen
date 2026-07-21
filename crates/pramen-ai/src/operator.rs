@@ -1,4 +1,4 @@
-//! The `ai.extract` / `ai.classify` transform operator.
+//! The `ai.extract` / `ai.classify` / `ai.generate` transform operator.
 //!
 //! Per record: build the content-addressed work key, consult the ledger,
 //! enforce budgets, dispatch if needed, validate the output against the
@@ -80,7 +80,7 @@ pub struct SemanticTransform {
 }
 
 impl SemanticTransform {
-    /// Build the operator for one `ai.extract`/`ai.classify` step.
+    /// Build the operator for one `ai.extract`/`ai.classify`/`ai.generate` step.
     ///
     /// `execution: auto` resolves to online; `execution: batch` requires
     /// the provider to declare batch capability.
@@ -254,29 +254,42 @@ impl SemanticTransform {
         key: &str,
         response: &ProviderResponse,
     ) -> Result<Option<Value>, StageError> {
+        if let Err(error) =
+            budget::enforce_output_budget(self.config.budget.as_ref(), response.output_tokens)
+        {
+            return self.reject_invalid(key, &error.to_string(), Some(&response.text));
+        }
         match validate_output(&response.text, &self.config.output.fields) {
             Ok(normalized) => {
                 self.consecutive_invalid = 0;
                 self.record_completion(key, response, &normalized)?;
                 Ok(Some(normalized))
             }
-            Err(violation) => {
-                self.ledger
-                    .mark_failed(key, &format!("invalid output: {violation}"))
-                    .map_err(|e| self.stage_error(&e))?;
-                self.consecutive_invalid += 1;
-                let trip_at = self.config.breaker.max_consecutive_invalid;
-                if self.consecutive_invalid >= trip_at {
-                    return Err(StageError::InvalidData(format!(
-                        "{}: circuit breaker tripped: {trip_at} consecutive invalid outputs \
-                         (last: {violation}); this looks systemic — check the instruction, \
-                         model, and endpoint before re-running",
-                        self.config.id,
-                    )));
-                }
-                self.apply_invalid_policy(key, &violation, Some(&response.text))
-            }
+            Err(violation) => self.reject_invalid(key, &violation, Some(&response.text)),
         }
+    }
+
+    /// Mark a record failed, arm the breaker, and apply `onInvalid`.
+    fn reject_invalid(
+        &mut self,
+        key: &str,
+        violation: &str,
+        raw_output: Option<&str>,
+    ) -> Result<Option<Value>, StageError> {
+        self.ledger
+            .mark_failed(key, &format!("invalid output: {violation}"))
+            .map_err(|e| self.stage_error(&e))?;
+        self.consecutive_invalid += 1;
+        let trip_at = self.config.breaker.max_consecutive_invalid;
+        if self.consecutive_invalid >= trip_at {
+            return Err(StageError::InvalidData(format!(
+                "{}: circuit breaker tripped: {trip_at} consecutive invalid outputs \
+                 (last: {violation}); this looks systemic — check the instruction, \
+                 model, and endpoint before re-running",
+                self.config.id,
+            )));
+        }
+        self.apply_invalid_policy(key, violation, raw_output)
     }
 
     fn record_completion(
@@ -928,11 +941,13 @@ mod tests {
                         name: "category".into(),
                         field_type: FieldType::Utf8,
                         nullable: false,
+                        max_chars: None,
                     },
                     FieldSpec {
                         name: "score".into(),
                         field_type: FieldType::Float64,
                         nullable: false,
+                        max_chars: None,
                     },
                 ],
             },
@@ -1420,6 +1435,217 @@ mod tests {
         .unwrap();
         let error = transform.apply(batch(&["x"])).await.unwrap_err();
         assert!(error.to_string().contains("`nonexistent`"), "{error}");
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn generate_config(on_invalid: InvalidPolicy) -> AiTransform {
+        AiTransform {
+            id: "summarize".into(),
+            model: "m".into(),
+            execution: ExecutionMode::Auto,
+            inputs: vec!["description".into()],
+            instruction: "write a short summary".into(),
+            output: AiOutput {
+                fields: vec![FieldSpec {
+                    name: "summary".into(),
+                    field_type: FieldType::Utf8,
+                    nullable: false,
+                    max_chars: Some(32),
+                }],
+            },
+            validation: AiValidation { on_invalid },
+            budget: Some(pramen_core::spec::AiBudget {
+                max_input_tokens_per_record: Some(2048),
+                max_output_tokens_per_record: Some(64),
+                max_run_tokens: None,
+            }),
+            breaker: AiBreaker::default(),
+        }
+    }
+
+    /// Provider that returns a schema-shaped but over-long UTF-8 field.
+    struct VerboseProvider {
+        calls: std::sync::atomic::AtomicU64,
+        output_tokens: u64,
+        text: String,
+    }
+
+    #[async_trait::async_trait]
+    impl Provider for VerboseProvider {
+        fn id(&self) -> &str {
+            "verbose"
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                online: true,
+                batch: false,
+                structured_output: true,
+                token_accounting: true,
+            }
+        }
+        async fn invoke(&self, _request: &InferenceRequest) -> Result<ProviderResponse, AiError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(ProviderResponse {
+                text: self.text.clone(),
+                input_tokens: 10,
+                output_tokens: self.output_tokens,
+                request_id: "verbose".to_owned(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_reuses_ledger_and_differs_from_extract_work_key() {
+        let (path, ledger) = temp_ledger("generate-reuse");
+        let provider = Arc::new(MockProvider::new());
+        let mut generate = SemanticTransform::new(
+            "ai.generate",
+            generate_config(InvalidPolicy::Fail),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+
+        let out = generate.apply(batch(&["printer on fire"])).await.unwrap();
+        assert_eq!(out[0].num_rows(), 1);
+        assert_eq!(out[0].schema().field(2).name(), "summary");
+        assert_eq!(provider.calls(), 1);
+
+        generate.apply(batch(&["printer on fire"])).await.unwrap();
+        assert_eq!(provider.calls(), 1, "generate ledger reuse");
+
+        // Same inputs under ai.extract are a different operation → new work.
+        let mut extract = SemanticTransform::new(
+            "ai.extract",
+            {
+                let mut cfg = generate_config(InvalidPolicy::Fail);
+                cfg.id = "extract-same".into();
+                cfg
+            },
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            Ledger::open(&path).unwrap(),
+        )
+        .unwrap();
+        extract.apply(batch(&["printer on fire"])).await.unwrap();
+        assert_eq!(
+            provider.calls(),
+            2,
+            "ai.generate and ai.extract must not share work keys"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn generate_budget_ceiling_blocks_dispatch() {
+        let (path, ledger) = temp_ledger("generate-budget");
+        let provider = Arc::new(MockProvider::new());
+        let mut cfg = generate_config(InvalidPolicy::Drop);
+        cfg.budget = Some(pramen_core::spec::AiBudget {
+            max_input_tokens_per_record: Some(1),
+            max_output_tokens_per_record: Some(64),
+            max_run_tokens: None,
+        });
+        let mut transform = SemanticTransform::new(
+            "ai.generate",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+
+        let out = transform
+            .apply(batch(&["this text is far beyond a one-token budget"]))
+            .await
+            .unwrap();
+        assert_eq!(out[0].num_rows(), 0);
+        assert_eq!(provider.calls(), 0);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn generate_rejects_over_long_field_without_truncating() {
+        let (path, ledger) = temp_ledger("generate-maxlen");
+        let long = "x".repeat(80);
+        let provider = Arc::new(VerboseProvider {
+            calls: std::sync::atomic::AtomicU64::new(0),
+            output_tokens: 8,
+            text: format!(r#"{{"summary":"{long}"}}"#),
+        });
+        let mut transform = SemanticTransform::new(
+            "ai.generate",
+            generate_config(InvalidPolicy::Fail),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+
+        let error = transform
+            .apply(batch(&["printer on fire"]))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("maxChars"), "{error}");
+        assert_eq!(provider.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn generate_rejects_reported_output_token_overrun() {
+        let (path, ledger) = temp_ledger("generate-out-tokens");
+        let provider = Arc::new(VerboseProvider {
+            calls: std::sync::atomic::AtomicU64::new(0),
+            output_tokens: 1000,
+            text: r#"{"summary":"ok"}"#.to_owned(),
+        });
+        let mut transform = SemanticTransform::new(
+            "ai.generate",
+            generate_config(InvalidPolicy::Fail),
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+
+        let error = transform
+            .apply(batch(&["printer on fire"]))
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("maxOutputTokensPerRecord")
+                || error.to_string().contains("output tokens"),
+            "{error}"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn generate_breaker_still_trips_on_consecutive_invalid() {
+        let (path, ledger) = temp_ledger("generate-breaker");
+        let long = "x".repeat(80);
+        let provider = Arc::new(VerboseProvider {
+            calls: std::sync::atomic::AtomicU64::new(0),
+            output_tokens: 8,
+            text: format!(r#"{{"summary":"{long}"}}"#),
+        });
+        let mut cfg = generate_config(InvalidPolicy::Drop);
+        cfg.breaker = AiBreaker {
+            max_consecutive_invalid: 2,
+        };
+        let mut transform = SemanticTransform::new(
+            "ai.generate",
+            cfg,
+            Arc::clone(&provider) as Arc<dyn Provider>,
+            "mock-1",
+            ledger,
+        )
+        .unwrap();
+
+        let error = transform.apply(batch(&["a", "b", "c"])).await.unwrap_err();
+        assert!(error.to_string().contains("circuit breaker"), "{error}");
+        assert_eq!(provider.calls.load(std::sync::atomic::Ordering::SeqCst), 2);
         let _ = std::fs::remove_file(path);
     }
 }

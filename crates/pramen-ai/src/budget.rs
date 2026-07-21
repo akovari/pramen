@@ -40,6 +40,32 @@ pub fn output_cap(budget: Option<&AiBudget>) -> Option<u32> {
     budget.and_then(|b| b.max_output_tokens_per_record)
 }
 
+/// Recheck provider-reported output tokens against the configured cap.
+///
+/// Providers are asked to honor `max_output_tokens`, but a buggy or
+/// non-compliant endpoint can still return more. Crossing the cap is an
+/// invalid output (routed by `onInvalid`), not a silent accept.
+///
+/// # Errors
+///
+/// Returns [`AiError::BudgetExceeded`] when reported usage exceeds the
+/// configured `maxOutputTokensPerRecord`.
+pub fn enforce_output_budget(
+    budget: Option<&AiBudget>,
+    reported_output_tokens: u64,
+) -> Result<(), AiError> {
+    let Some(cap) = budget.and_then(|b| b.max_output_tokens_per_record) else {
+        return Ok(());
+    };
+    if reported_output_tokens > u64::from(cap) {
+        return Err(AiError::BudgetExceeded(format!(
+            "provider reported {reported_output_tokens} output tokens, \
+             exceeding maxOutputTokensPerRecord {cap}"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -66,6 +92,15 @@ mod tests {
         assert!(enforce_input_budget(Some(&budget(None, Some(5))), &"x".repeat(100_000)).is_ok());
         assert_eq!(output_cap(Some(&budget(None, Some(5)))), Some(5));
         assert_eq!(output_cap(None), None);
+        assert!(enforce_output_budget(None, 1_000_000).is_ok());
+    }
+
+    #[test]
+    fn reported_output_tokens_are_rechecked() {
+        let b = budget(None, Some(8));
+        assert!(enforce_output_budget(Some(&b), 8).is_ok());
+        let error = enforce_output_budget(Some(&b), 9).unwrap_err();
+        assert!(matches!(error, AiError::BudgetExceeded(_)));
     }
 
     #[test]

@@ -263,10 +263,15 @@ fn fields_from_schema(schema: &Value) -> Option<Vec<FieldSpec>> {
             "boolean" => FieldType::Bool,
             _ => return None,
         };
+        let max_chars = spec
+            .get("maxLength")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok());
         fields.push(FieldSpec {
             name: name.clone(),
             field_type,
             nullable,
+            max_chars,
         });
     }
     Some(fields)
@@ -299,11 +304,13 @@ mod tests {
                     name: "category".into(),
                     field_type: FieldType::Utf8,
                     nullable: false,
+                    max_chars: None,
                 },
                 FieldSpec {
                     name: "score".into(),
                     field_type: FieldType::Float64,
                     nullable: true,
+                    max_chars: None,
                 },
             ]),
             provider: "mock".into(),

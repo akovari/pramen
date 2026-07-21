@@ -463,11 +463,13 @@ mod tests {
                         name: "category".into(),
                         field_type: FieldType::Utf8,
                         nullable: false,
+                        max_chars: None,
                     },
                     FieldSpec {
                         name: "urgent".into(),
                         field_type: FieldType::Bool,
                         nullable: false,
+                        max_chars: None,
                     },
                 ],
                 weights: BTreeMap::from([("category".to_owned(), 2.0)]),

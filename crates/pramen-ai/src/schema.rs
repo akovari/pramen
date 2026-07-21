@@ -7,6 +7,10 @@ use serde_json::{Map, Value, json};
 /// The JSON Schema a model must satisfy, generated from the transform's
 /// declared output fields. Sent to the model as part of the instruction
 /// and used verbatim in the work key (so schema changes create new work).
+///
+/// UTF-8 fields with [`FieldSpec::max_chars`] include a `maxLength`
+/// constraint so providers that honor JSON Schema see the bound, and so
+/// the work key changes when bounds change.
 #[must_use]
 pub fn output_json_schema(fields: &[FieldSpec]) -> Value {
     let mut properties = Map::new();
@@ -19,11 +23,16 @@ pub fn output_json_schema(fields: &[FieldSpec]) -> Value {
             FieldType::Bool => "boolean",
             FieldType::Timestamp => "string",
         };
-        let schema = if field.nullable {
+        let mut schema = if field.nullable {
             json!({"type": [type_name, "null"]})
         } else {
             json!({"type": type_name})
         };
+        if field.field_type == FieldType::Utf8
+            && let Some(max_chars) = field.max_chars
+        {
+            schema["maxLength"] = json!(max_chars);
+        }
         properties.insert(field.name.clone(), schema);
         required.push(Value::String(field.name.clone()));
     }
@@ -39,6 +48,8 @@ pub fn output_json_schema(fields: &[FieldSpec]) -> Value {
 ///
 /// Returns the normalized output object (fields in declaration order,
 /// values type-checked) or a human-readable description of every problem.
+/// Over-long UTF-8 values (exceeding `maxChars`) are rejected — never
+/// truncated.
 ///
 /// # Errors
 ///
@@ -70,16 +81,29 @@ pub fn validate_output(text: &str, fields: &[FieldSpec]) -> Result<Value, String
                     FieldType::Float64 => actual.is_number(),
                     FieldType::Bool => actual.is_boolean(),
                 };
-                if ok {
-                    normalized.insert(field.name.clone(), actual.clone());
-                } else {
+                if !ok {
                     problems.push(format!(
                         "field `{}` has wrong type (expected {:?}, got {})",
                         field.name,
                         field.field_type,
                         type_name(actual)
                     ));
+                    continue;
                 }
+                if field.field_type == FieldType::Utf8
+                    && let Some(max_chars) = field.max_chars
+                    && let Some(text) = actual.as_str()
+                {
+                    let chars = text.chars().count();
+                    if chars > max_chars as usize {
+                        problems.push(format!(
+                            "field `{}` length {chars} exceeds maxChars {max_chars}",
+                            field.name
+                        ));
+                        continue;
+                    }
+                }
+                normalized.insert(field.name.clone(), actual.clone());
             }
         }
     }
@@ -117,13 +141,24 @@ mod tests {
                 name: "category".into(),
                 field_type: FieldType::Utf8,
                 nullable: false,
+                max_chars: None,
             },
             FieldSpec {
                 name: "score".into(),
                 field_type: FieldType::Float64,
                 nullable: true,
+                max_chars: None,
             },
         ]
+    }
+
+    fn bounded_text() -> Vec<FieldSpec> {
+        vec![FieldSpec {
+            name: "summary".into(),
+            field_type: FieldType::Utf8,
+            nullable: false,
+            max_chars: Some(16),
+        }]
     }
 
     #[test]
@@ -134,6 +169,13 @@ mod tests {
         assert_eq!(schema["properties"]["score"]["type"][1], "null");
         assert_eq!(schema["required"][0], "category");
         assert_eq!(schema["additionalProperties"], false);
+        assert!(schema["properties"]["category"].get("maxLength").is_none());
+    }
+
+    #[test]
+    fn schema_includes_max_length_for_bounded_utf8() {
+        let schema = output_json_schema(&bounded_text());
+        assert_eq!(schema["properties"]["summary"]["maxLength"], 16);
     }
 
     #[test]
@@ -161,5 +203,19 @@ mod tests {
         assert!(validate_output("[1,2]", &fields()).is_err());
         let error = validate_output(r#"{"category": null, "score": 1.0}"#, &fields()).unwrap_err();
         assert!(error.contains("not nullable"), "{error}");
+    }
+
+    #[test]
+    fn over_long_utf8_is_rejected_not_truncated() {
+        let ok = validate_output(r#"{"summary": "short enough"}"#, &bounded_text()).unwrap();
+        assert_eq!(ok["summary"], "short enough");
+
+        let error = validate_output(
+            r#"{"summary": "this summary is definitely too long"}"#,
+            &bounded_text(),
+        )
+        .unwrap_err();
+        assert!(error.contains("exceeds maxChars"), "{error}");
+        assert!(error.contains("summary"), "{error}");
     }
 }

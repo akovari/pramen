@@ -10,8 +10,8 @@
 //! - [`schema`]: JSON Schema generation from declared output fields and
 //!   strict typed validation of model output;
 //! - [`budget`]: token budgets enforced *before* dispatch;
-//! - [`operator`]: the `ai.extract` / `ai.classify` transform that plugs
-//!   into the [`pramen_core::runtime`] dataflow;
+//! - [`operator`]: the `ai.extract` / `ai.classify` / `ai.generate`
+//!   transform that plugs into the [`pramen_core::runtime`] dataflow;
 //! - [`review`]: the durable review queue — records routed by
 //!   `onInvalid: review` await a human decision; accepted corrections
 //!   re-enter the ledger, rejections drop permanently (`pramen ai review`);
