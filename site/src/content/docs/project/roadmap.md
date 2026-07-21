@@ -56,9 +56,10 @@ This page is the honest summary. Workspace version: **0.2.0**.
 
 - **Cloud acceptance** (credentials): S1.1 live Bedrock online, S2.1
   batch crash numbers, S2.2 quality–cost frontier, P2.1 1M-record AWS run.
-- **Phase 2 Group X2**: third-party WASM conformance proof (X2.1) done —
-  see `examples/external-wasm-guest/`; open: reproducible AWS deployment
-  runbook (X2.2).
+- **Phase 2 Group X2** (done offline): third-party WASM conformance
+  (`examples/external-wasm-guest/`); deploy artifacts + runbook
+  ([Deploying on AWS](/pramen/cookbook/aws-deploy/)). Live AWS apply still
+  needs credentials.
 - **Phase 3**: ADBC / Flight SQL sinks, fan-out DAGs, connector SDK,
   research paper program (E1/E2).
 

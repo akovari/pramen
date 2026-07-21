@@ -51,6 +51,7 @@ export default defineConfig({
 						{ label: 'S3 and MinIO sources', slug: 'cookbook/s3-sources' },
 						{ label: 'Object-store sources (S3, Azure, GCS)', slug: 'cookbook/object-store-sources' },
 						{ label: 'WASM transforms', slug: 'cookbook/wasm-transforms' },
+						{ label: 'Deploying on AWS', slug: 'cookbook/aws-deploy' },
 					],
 				},
 				{

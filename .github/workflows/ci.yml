@@ -109,6 +109,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
 
+  deploy-artifacts:
+    # X2.2: unit files + Grafana JSON parse offline (no AWS).
+    name: Deploy artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/validate-deploy.sh
+
   docs:
     name: Docs
     runs-on: ubuntu-latest

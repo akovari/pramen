@@ -1,0 +1,40 @@
+# Pramen pipeline worker (oneshot). Pair with pramen.timer for periodic
+# incremental runs against a checkpointed source, or invoke manually:
+#   systemctl start pramen.service
+#
+# Install:
+#   install -d /etc/pramen /var/lib/pramen/{checkpoints,ledger}
+#   install -m 0644 deploy/systemd/pramen.service /etc/systemd/system/
+#   install -m 0640 deploy/systemd/pramen.env.example /etc/pramen/pramen.env
+#   # edit /etc/pramen/pramen.env and install pipeline YAML
+#   systemctl daemon-reload
+
+[Unit]
+Description=Pramen pipeline run
+Documentation=https://akovari.github.io/pramen/cookbook/aws-deploy/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pramen
+Group=pramen
+EnvironmentFile=-/etc/pramen/pramen.env
+WorkingDirectory=/var/lib/pramen
+# JSON logs for collectors; OTLP endpoint comes from PRAMEN_OTLP_ENDPOINT.
+ExecStart=/usr/local/bin/pramen run --log-format json ${PRAMEN_PIPELINE}
+Nice=5
+# Checkpoint / ledger state must survive crashes.
+StateDirectory=pramen
+ReadWritePaths=/var/lib/pramen
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# Oneshot exits 0 on success; timer starts the next cycle.
+RemainAfterExit=false
+
+[Install]
+WantedBy=multi-user.target

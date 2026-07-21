@@ -1,0 +1,29 @@
+# Minimal collector: receive OTLP HTTP from `pramen run --otlp-endpoint`
+# and expose Prometheus for Grafana (deploy/grafana/pramen-runtime.json).
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: ""
+    # Counters from observe.rs keep their semantic names; dots become
+    # underscores (pramen.rows_in → pramen_rows_in_total after the
+    # Prometheus exporter's counter convention).
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus, debug]

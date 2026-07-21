@@ -1,0 +1,250 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Pramen architecture §13 signals that are exported today via OTLP (`pramen run --otlp-endpoint` / PRAMEN_OTLP_ENDPOINT). Metric names match crates/pramen-core/src/observe.rs. Prometheus scrape names assume the contrib collector prometheus exporter (dots → underscores; counters may gain `_total`).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "doc",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "AWS deploy runbook",
+      "tooltip": "",
+      "type": "link",
+      "url": "https://akovari.github.io/pramen/cookbook/aws-deploy/"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Throughput (OTLP — exported today)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "OTLP counter `pramen.rows_in` / Prometheus `pramen_rows_in_total` (or `pramen_rows_in`). Attribute `pipeline` is set on export.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (pipeline) (pramen_rows_in_total{pipeline=~\"$pipeline\"}) or sum by (pipeline) (pramen_rows_in{pipeline=~\"$pipeline\"})",
+          "legendFormat": "rows_in {{pipeline}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (pipeline) (pramen_rows_out_total{pipeline=~\"$pipeline\"}) or sum by (pipeline) (pramen_rows_out{pipeline=~\"$pipeline\"})",
+          "legendFormat": "rows_out {{pipeline}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Records in / out",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "OTLP `pramen.batches_in` / `pramen.batches_out`.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (pipeline) (pramen_batches_in_total{pipeline=~\"$pipeline\"}) or sum by (pipeline) (pramen_batches_in{pipeline=~\"$pipeline\"})",
+          "legendFormat": "batches_in {{pipeline}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (pipeline) (pramen_batches_out_total{pipeline=~\"$pipeline\"}) or sum by (pipeline) (pramen_batches_out{pipeline=~\"$pipeline\"})",
+          "legendFormat": "batches_out {{pipeline}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Batches in / out",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "OTLP `pramen.bytes_in` / `pramen.bytes_out` (Arrow buffer bytes).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (pipeline) (pramen_bytes_in_total{pipeline=~\"$pipeline\"}) or sum by (pipeline) (pramen_bytes_in{pipeline=~\"$pipeline\"})",
+          "legendFormat": "bytes_in {{pipeline}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (pipeline) (pramen_bytes_out_total{pipeline=~\"$pipeline\"}) or sum by (pipeline) (pramen_bytes_out{pipeline=~\"$pipeline\"})",
+          "legendFormat": "bytes_out {{pipeline}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Bytes in / out",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "OTLP gauge `pramen.run_duration` (seconds). One-shot export at run end.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 40,
+            "lineWidth": 1,
+            "showPoints": "auto"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "expr": "max by (pipeline) (pramen_run_duration_seconds{pipeline=~\"$pipeline\"}) or max by (pipeline) (pramen_run_duration{pipeline=~\"$pipeline\"})",
+          "legendFormat": "run_duration {{pipeline}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Run duration",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 10,
+      "title": "§13 coverage gaps (not OTLP-exported yet)",
+      "type": "row"
+    },
+    {
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 18 },
+      "id": 11,
+      "options": {
+        "content": "## Honest gap list\n\nOTLP export today (`crates/pramen-core/src/observe.rs` → `export_metrics_otlp`) only pushes:\n\n| OTLP name | Kind |\n| --- | --- |\n| `pramen.rows_in` / `pramen.rows_out` | counter |\n| `pramen.batches_in` / `pramen.batches_out` | counter |\n| `pramen.bytes_in` / `pramen.bytes_out` | counter |\n| `pramen.run_duration` | gauge (seconds) |\n\nAttributed with `pipeline=<metadata.name>` and `service.name=pramen`.\n\n**Not emitted as metrics yet** (architecture §13). Use structured logs (`--log-format json`) and CLI inspectors until the registry grows:\n\n| §13 signal | Current operator surface |\n| --- | --- |\n| Channel occupancy / in-flight bytes | Runtime options only (`targetBatchBytes`, `maxInflightBytes`); no gauge |\n| Stage latencies (source/transform/sink) | Not histogrammed |\n| Retry counts and ages | Provider faults typed in logs; no counter |\n| Checkpoint age / completion | `pramen run` log lines (`checkpoint store consulted`, `checkpoint updated`); store files/rows |\n| Rejected records | `pramen ai status` / `ai review` (`rejected` count) |\n| WASM compile / invoke / trap / fuel / memory | Host traps in logs; no OTLP instruments |\n| AI queued / submitted / completed / reused / invalid / reviewed / failed | `pramen ai status` ledger counts |\n| Tokens / cost / provider latency / batch age | `ai evaluate` reports; ledger rows; not OTLP |\n| AI cache hit rate / model·schema cardinality | Ledger reuse on replay; no hit-rate metric |\n\nDo **not** invent PromQL for the missing rows — extend `RunMetrics` + `export_metrics_otlp` first, then add panels.",
+        "mode": "markdown"
+      },
+      "title": "Gaps vs architecture §13",
+      "type": "text"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["pramen", "otlp", "x2.2"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(pramen_rows_out_total, pipeline)",
+        "includeAll": true,
+        "label": "Pipeline",
+        "name": "pipeline",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(pramen_rows_out_total, pipeline)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Pramen runtime (§13 / OTLP)",
+  "uid": "pramen-runtime-otlp",
+  "version": 1,
+  "weekStart": ""
+}
