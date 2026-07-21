@@ -3,6 +3,7 @@
 //! Validation reports *every* problem it finds, with a dotted path to the
 //! offending element, so a user fixes a document in one round trip.
 
+use super::component_ref::{ComponentRef, ComponentRefError};
 use super::error::ValidationIssue;
 use super::types::{AiTransform, PipelineSpec, SinkMode, SinkSpec, SourceSpec, TransformSpec};
 use std::collections::BTreeSet;
@@ -104,6 +105,12 @@ fn validate_transforms(spec: &PipelineSpec, push: &mut impl FnMut(&str, String))
             TransformSpec::Wasm(wasm) => {
                 if wasm.component.trim().is_empty() {
                     push(&format!("{path}.component"), "must not be empty".to_owned());
+                } else if let Err(error) = ComponentRef::parse(&wasm.component) {
+                    let message = match error {
+                        ComponentRefError::DigestRequired => error.to_string(),
+                        ComponentRefError::Invalid(detail) => detail,
+                    };
+                    push(&format!("{path}.component"), message);
                 }
             }
         }

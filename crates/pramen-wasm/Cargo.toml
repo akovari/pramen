@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 arrow = { workspace = true, features = ["ipc"] }
 async-trait = { workspace = true }
+oci-client = { workspace = true }
 pramen-core = { path = "../pramen-core" }
 sha2 = { workspace = true }
 thiserror = { workspace = true }

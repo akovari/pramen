@@ -168,10 +168,14 @@ async fn execute_async(
         });
     }
     let wasm_cache = pramen_wasm::ArtifactCache::new();
+    let wasm_oci = pramen_wasm::OciLoadOptions::new(
+        pramen_wasm::OciAllowlist::from_runtime_and_env(&spec.spec.runtime.wasm_oci_allowlist),
+    );
     let pipeline_dir = pipeline_file
         .and_then(|path| path.parent())
         .unwrap_or_else(|| std::path::Path::new("."));
-    let transforms = plan_transforms(spec, smoke.is_some(), pipeline_dir, &wasm_cache).await?;
+    let transforms =
+        plan_transforms(spec, smoke.is_some(), pipeline_dir, &wasm_cache, &wasm_oci).await?;
     let sink = plan_sink(spec).await?;
 
     let capacity = usize::try_from(
@@ -324,6 +328,7 @@ async fn plan_transforms(
     smoke: bool,
     pipeline_dir: &std::path::Path,
     wasm_cache: &pramen_wasm::ArtifactCache,
+    wasm_oci: &pramen_wasm::OciLoadOptions,
 ) -> Result<Vec<PlannedTransform>, String> {
     let _ = smoke;
     let mut planned = Vec::with_capacity(spec.spec.transforms.len());
@@ -336,11 +341,16 @@ async fn plan_transforms(
             TransformSpec::AiExtract(ai) => plan_semantic("ai.extract", ai, spec, smoke).await?,
             TransformSpec::AiClassify(ai) => plan_semantic("ai.classify", ai, spec, smoke).await?,
             TransformSpec::Wasm(wasm) => {
-                let component = pramen_wasm::resolve_component_path(pipeline_dir, &wasm.component);
                 let limits = pramen_wasm::InvocationLimits::from_spec(&wasm.limits);
-                let operator =
-                    pramen_wasm::WasmTransform::from_cache(wasm_cache, &component, limits)
-                        .map_err(|error| format!("transform `{}`: {error}", wasm.id))?;
+                let operator = pramen_wasm::WasmTransform::from_component(
+                    wasm_cache,
+                    pipeline_dir,
+                    &wasm.component,
+                    limits,
+                    wasm_oci,
+                )
+                .await
+                .map_err(|error| format!("transform `{}`: {error}", wasm.id))?;
                 (wasm.id.clone(), Box::new(operator) as Box<dyn Transform>)
             }
         });

@@ -36,6 +36,9 @@ criterion = "0.7"
 datafusion = "50"
 futures = "0.3"
 object_store = { version = "0.12", features = ["aws"] }
+# OCI Distribution client for WASM component pulls (X1.4). rustls only;
+# default `test-registry` feature is unused in production paths.
+oci-client = { version = "0.17", default-features = false, features = ["rustls-tls"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 sha2 = "0.10"

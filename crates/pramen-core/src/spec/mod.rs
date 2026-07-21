@@ -8,10 +8,12 @@
 //! list of transforms, one sink — while the internal plan remains free to
 //! become a DAG later without changing this surface.
 
+mod component_ref;
 mod error;
 mod types;
 mod validate;
 
+pub use component_ref::{ComponentRef, ComponentRefError, OciReference};
 pub use error::{SpecError, ValidationIssue};
 pub use types::{
     AiBreaker, AiBudget, AiOutput, AiTransform, AiValidation, ApiVersion, CheckpointSpec,

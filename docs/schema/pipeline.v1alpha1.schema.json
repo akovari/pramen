@@ -384,6 +384,13 @@
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
+        },
+        "wasmOciAllowlist": {
+          "description": "Digests (`sha256:…`) and/or `registry/repository` prefixes permitted\nfor OCI-distributed WASM components. Merged with\n`PRAMEN_WASM_OCI_ALLOWLIST`. Empty (and empty env) denies all OCI pulls.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"
@@ -649,7 +656,7 @@
           "description": "A sandboxed WebAssembly component transform (Arrow IPC in/out).",
           "properties": {
             "component": {
-              "description": "Path to a `.wasm` component artifact (absolute or relative to the\npipeline document).",
+              "description": "Component artifact: a filesystem path (absolute or relative to the\npipeline document), or an OCI reference pinned by digest\n(`oci://registry/repo@sha256:…`). Tag-only OCI refs are rejected.",
               "type": "string"
             },
             "id": {
