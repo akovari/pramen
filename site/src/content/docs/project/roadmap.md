@@ -61,7 +61,9 @@ This page is the honest summary. Workspace version: **0.2.0**.
   ([Deploying on AWS](/pramen/cookbook/aws-deploy/)). Live AWS apply still
   needs credentials.
 - **Phase 3**: ADBC / Flight SQL sinks, fan-out DAGs, connector SDK,
-  research paper program (E1/E2).
+  research paper program (E1/E2). RQ2 memoization semantics (E2.2) are
+  formalized and measured offline — see
+  [governed AI reuse contract](/pramen/concepts/governed-ai/#reuse-contract-rq2).
 
 ## Engineering standards
 

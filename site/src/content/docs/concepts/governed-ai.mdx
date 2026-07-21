@@ -78,6 +78,20 @@ The consequences fall out naturally:
 Ledger overhead was measured at microseconds per work item — noise next to
 any model call.
 
+## Reuse contract (RQ2)
+
+The ledger’s behaviour is a fixed contract, not a best-effort cache. Formal
+statement and offline measurements live in
+[`docs/research/rq2-memoization.md`](https://github.com/akovari/pramen/blob/main/docs/research/rq2-memoization.md):
+
+- **Work key** = hash of canonical inputs + instruction + schema + provider/model + params.
+- **Completed recorded results are immutable** — replays never re-dispatch or re-bill them.
+- **Crash after provider-batch submit reconciles** by job/item id (zero rebill).
+- **Review-queued records stay withheld** across replays with zero re-dispatch until accept/reject.
+- **Measured (mock + SQLite):** 100% reuse / 0 tokens on online replay; 90% savings on a 200-row / 20-unique duplicate workload; incremental re-enrichment bills only changed and new keys.
+
+Regenerate figures with `./scripts/rq2-memoization.sh` (or `mise run rq2-memoization`).
+
 ## Budgets, ceilings, and the circuit breaker
 
 - **Budgets are enforced before dispatch**, not reported after.

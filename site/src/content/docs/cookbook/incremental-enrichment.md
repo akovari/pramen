@@ -43,7 +43,7 @@ full (growing) dataset. With `runtime.checkpoint` set, already-loaded
 files are not even read again; new files' records that duplicate old
 content still reuse ledger results. Cost tracks new records only.
 Duplicate-heavy sources (retries, CDC replays) deduplicate for free —
-identical content is one work key.
+identical content is one work key. The formal reuse contract and measured savings are in [RQ2 memoization](https://github.com/akovari/pramen/blob/main/docs/research/rq2-memoization.md).
 
 **Prompt iteration with a controlled blast radius.** The prompt revision is
 part of the key, so improving an instruction and re-running re-executes

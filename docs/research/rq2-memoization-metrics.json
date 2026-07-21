@@ -1,0 +1,89 @@
+{
+  "task": "E2.2",
+  "generatedAtUnix": 1784617446,
+  "provider": "mock",
+  "ledger": "sqlite",
+  "scenarios": [
+    {
+      "id": "crash_replay_online",
+      "title": "Crash/replay (online)",
+      "recordsSeen": 50,
+      "providerCalls": 0,
+      "tokensBilled": 0,
+      "resultsReused": 50,
+      "reusePct": 100.0,
+      "detail": {
+        "firstPassCalls": 50,
+        "firstPassTokens": 1500,
+        "replayCalls": 0,
+        "replayTokens": 0
+      }
+    },
+    {
+      "id": "crash_reconcile_batch",
+      "title": "Crash/reconcile (batch)",
+      "recordsSeen": 24,
+      "providerCalls": 0,
+      "tokensBilled": 0,
+      "resultsReused": 24,
+      "reusePct": 100.0,
+      "detail": {
+        "billedAtSubmit": 24,
+        "callsAfterReconcile": 24,
+        "rebillCalls": 0,
+        "rowsRecovered": 24
+      }
+    },
+    {
+      "id": "incremental_reenrichment",
+      "title": "Incremental re-enrichment",
+      "recordsSeen": 45,
+      "providerCalls": 10,
+      "tokensBilled": 295,
+      "resultsReused": 35,
+      "reusePct": 77.77777777777777,
+      "naiveProviderCalls": 45,
+      "savingsPct": 77.77777777777779,
+      "detail": {
+        "baselineCalls": 40,
+        "baselineTokens": 1160,
+        "changedRebilled": 5,
+        "expectedSecondPassCalls": 10,
+        "newBilled": 5,
+        "secondPassCalls": 10,
+        "secondPassTokens": 295,
+        "unchangedReused": 35
+      }
+    },
+    {
+      "id": "duplicate_heavy",
+      "title": "Duplicate-heavy workload",
+      "recordsSeen": 200,
+      "providerCalls": 20,
+      "tokensBilled": 580,
+      "resultsReused": 180,
+      "reusePct": 90.0,
+      "naiveProviderCalls": 200,
+      "savingsPct": 90.0,
+      "detail": {
+        "rows": 200,
+        "uniqueInputs": 20
+      }
+    },
+    {
+      "id": "review_queue_withhold",
+      "title": "Review queue withhold",
+      "recordsSeen": 1,
+      "providerCalls": 0,
+      "tokensBilled": 0,
+      "resultsReused": 0,
+      "reusePct": 0.0,
+      "detail": {
+        "firstPassCalls": 1,
+        "firstPassRows": 0,
+        "replayCalls": 0,
+        "replayRows": 0
+      }
+    }
+  ]
+}

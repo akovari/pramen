@@ -37,6 +37,22 @@ the engine ceiling is the load path; the encoder itself sustains
 5.6–6.5M rows/s in isolation (Criterion), at most ~10% of that budget.
 ([full report with per-run numbers and caveats](https://github.com/akovari/pramen/blob/main/docs/benchmarks/2026-07-12-v1.md))
 
+## Memoization savings (RQ2 / E2.2)
+
+Offline suite (`scripts/rq2-memoization.sh`, mock provider + SQLite ledger)
+pins the reuse contract with published JSON under
+[`docs/research/`](https://github.com/akovari/pramen/tree/main/docs/research):
+
+| Scenario | Headline |
+| --- | --- |
+| Crash/replay (online) | 100% result reuse; 0 tokens billed on replay |
+| Crash/reconcile (batch) | 0 rebill calls after submit-then-crash |
+| Incremental re-enrichment | Only changed + new keys re-billed (10/45 in the fixture) |
+| Duplicate-heavy (200 rows / 20 unique) | 90% savings vs naive per-row dispatch |
+
+Full contract and methodology:
+[`docs/research/rq2-memoization.md`](https://github.com/akovari/pramen/blob/main/docs/research/rq2-memoization.md).
+
 ## Governance overhead per semantic record
 
 Criterion micro-benches (`cargo bench -p pramen-ai`): canonicalize + hash

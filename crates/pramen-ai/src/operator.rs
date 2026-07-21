@@ -615,7 +615,10 @@ impl SemanticTransform {
     /// per item in the ledger *before* awaiting anything — the crash
     /// window between submission and completion is exactly what
     /// reconciliation covers.
-    async fn submit_pending(&mut self) -> Result<(), StageError> {
+    ///
+    /// Visible to the RQ2 measurement harness (`reuse`) so crash-after-
+    /// submit can be injected without waiting for [`Self::finish`].
+    pub(crate) async fn submit_pending(&mut self) -> Result<(), StageError> {
         if self.pending.is_empty() {
             return Ok(());
         }

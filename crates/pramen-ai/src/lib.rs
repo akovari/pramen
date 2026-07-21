@@ -17,7 +17,9 @@
 //!   `onInvalid: review` await a human decision; accepted corrections
 //!   re-enter the ledger, rejections drop permanently (`pramen ai review`);
 //! - [`eval`]: golden-corpus evaluation — quality, cost, and latency of a
-//!   model on a versioned labelled corpus (`pramen ai evaluate`).
+//!   model on a versioned labelled corpus (`pramen ai evaluate`);
+//! - [`reuse`]: offline RQ2 memoization measurement suite (task E2.2) —
+//!   crash/replay, incremental re-enrichment, duplicate-heavy savings.
 
 pub mod budget;
 pub mod error;
@@ -25,6 +27,7 @@ pub mod eval;
 pub mod ledger;
 pub mod operator;
 pub mod provider;
+pub mod reuse;
 pub mod review;
 pub mod schema;
 pub mod workkey;
