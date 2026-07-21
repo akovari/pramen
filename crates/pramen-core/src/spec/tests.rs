@@ -1,6 +1,29 @@
 use super::*;
 
-const EXAMPLE: &str = include_str!("../../../../examples/governed-enrichment.yaml");
+const EXAMPLE_RAW: &str = include_str!("../../../../examples/governed-enrichment.yaml");
+
+/// Canonical example with LF newlines.
+///
+/// Git on Windows may check out the YAML with CRLF (`core.autocrlf`), which
+/// makes `.replace("…\\n…")` mutations no-ops and silently weakens tests.
+fn example() -> String {
+    EXAMPLE_RAW.replace("\r\n", "\n")
+}
+
+#[test]
+fn example_mutations_survive_crlf_checkouts() {
+    // Simulate a Windows autocrlf working tree: include_str! content has CRLF,
+    // but example() normalizes so LF-needle replaces still apply.
+    let crlf = example().replace('\n', "\r\n");
+    let normalized = crlf.replace("\r\n", "\n");
+    assert!(normalized.contains("      inputs: [description]\n"));
+    let mutated = normalized.replacen(
+        "      inputs: [description]\n",
+        "      dispatch:\n        expectedRecords: 1\n      inputs: [description]\n",
+        1,
+    );
+    assert!(mutated.contains("expectedRecords: 1"));
+}
 
 fn issues_of(yaml: &str) -> Vec<String> {
     match parse(yaml) {
@@ -14,7 +37,7 @@ fn issues_of(yaml: &str) -> Vec<String> {
 
 #[test]
 fn canonical_example_parses_and_validates() {
-    let spec = parse(EXAMPLE).unwrap();
+    let spec = parse(&example()).unwrap();
     assert_eq!(spec.metadata.name, "governed-semantic-enrichment");
     assert_eq!(spec.spec.transforms.len(), 2);
     assert_eq!(spec.spec.transforms[0].id(), "normalize");
@@ -33,7 +56,7 @@ fn canonical_example_parses_and_validates() {
 
 #[test]
 fn auto_dispatch_hints_parse() {
-    let yaml = EXAMPLE.replacen(
+    let yaml = example().replacen(
         "      inputs: [description]\n",
         concat!(
             "      dispatch:\n",
@@ -56,7 +79,7 @@ fn auto_dispatch_hints_parse() {
 
 #[test]
 fn round_trips_through_serde() {
-    let spec = parse(EXAMPLE).unwrap();
+    let spec = parse(&example()).unwrap();
     let yaml = serde_yaml_ng::to_string(&spec).unwrap();
     let reparsed = parse(&yaml).unwrap();
     assert_eq!(
@@ -67,7 +90,7 @@ fn round_trips_through_serde() {
 
 #[test]
 fn unknown_fields_are_rejected() {
-    let yaml = EXAMPLE.replace(
+    let yaml = example().replace(
         "  name: governed-semantic-enrichment",
         "  name: x\n  surprise: 1",
     );
@@ -80,7 +103,7 @@ fn unknown_fields_are_rejected() {
 
 #[test]
 fn undeclared_model_reference_is_reported_with_path() {
-    let yaml = EXAMPLE.replace("model: enrichment", "model: missing");
+    let yaml = example().replace("model: enrichment", "model: missing");
     let issues = issues_of(&yaml);
     assert_eq!(issues.len(), 1, "issues: {issues:?}");
     assert!(issues[0].starts_with("spec.transforms[1].model:"));
@@ -90,7 +113,7 @@ fn undeclared_model_reference_is_reported_with_path() {
 
 #[test]
 fn all_issues_are_reported_at_once() {
-    let yaml = EXAMPLE
+    let yaml = example()
         .replace("name: governed-semantic-enrichment", "name: Bad_Name")
         .replace("model: enrichment", "model: missing")
         .replace("target: analytics.events", "target: events");
@@ -100,7 +123,7 @@ fn all_issues_are_reported_at_once() {
 
 #[test]
 fn duplicate_transform_ids_are_reported() {
-    let yaml = EXAMPLE.replace("- id: classify", "- id: normalize");
+    let yaml = example().replace("- id: classify", "- id: normalize");
     let issues = issues_of(&yaml);
     assert!(
         issues
@@ -112,7 +135,7 @@ fn duplicate_transform_ids_are_reported() {
 
 #[test]
 fn zero_budget_is_rejected() {
-    let yaml = EXAMPLE.replace(
+    let yaml = example().replace(
         "maxOutputTokensPerRecord: 256",
         "maxOutputTokensPerRecord: 0",
     );
@@ -123,7 +146,7 @@ fn zero_budget_is_rejected() {
 
 #[test]
 fn inflight_smaller_than_batch_is_rejected() {
-    let yaml = EXAMPLE.replace("maxInflightBytes: 268435456", "maxInflightBytes: 1024");
+    let yaml = example().replace("maxInflightBytes: 268435456", "maxInflightBytes: 1024");
     let issues = issues_of(&yaml);
     assert_eq!(issues.len(), 1, "issues: {issues:?}");
     assert!(issues[0].contains("targetBatchBytes"));
@@ -131,7 +154,7 @@ fn inflight_smaller_than_batch_is_rejected() {
 
 #[test]
 fn unsupported_source_scheme_is_rejected() {
-    let yaml = EXAMPLE.replace(
+    let yaml = example().replace(
         "url: s3://example-input/events/",
         "url: http://example.com/x",
     );
@@ -144,7 +167,7 @@ fn unsupported_source_scheme_is_rejected() {
 
 #[test]
 fn residency_rejects_model_region_outside_allow_list() {
-    let yaml = EXAMPLE.replace(
+    let yaml = example().replace(
         "    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
         "    residency:\n      allowedLocations: [eu-west-1]\n    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
     );
@@ -165,7 +188,7 @@ fn residency_rejects_model_region_outside_allow_list() {
 
 #[test]
 fn residency_requires_source_location_for_cloud_urls() {
-    let yaml = EXAMPLE.replace(
+    let yaml = example().replace(
         "    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
         "    residency:\n      allowedLocations: [eu-central-1]\n    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
     );
@@ -211,7 +234,7 @@ spec:
 
 #[test]
 fn residency_accepts_matching_cloud_source_and_model() {
-    let yaml = EXAMPLE
+    let yaml = example()
         .replace(
             "    url: s3://example-input/events/\n    format:",
             "    url: s3://example-input/events/\n    location: eu-central-1\n    format:",

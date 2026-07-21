@@ -1,0 +1,6 @@
+# Keep source and fixtures LF so include_str! / string-mutation tests are
+# portable across Windows (core.autocrlf) and Unix checkouts.
+* text=auto eol=lf
+*.png binary
+*.wasm binary
+*.sqlite binary
