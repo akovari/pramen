@@ -60,8 +60,13 @@ This page is the honest summary. Workspace version: **0.2.0**.
   (`examples/external-wasm-guest/`); deploy artifacts + runbook
   ([Deploying on AWS](/pramen/cookbook/aws-deploy/)). Live AWS apply still
   needs credentials.
-- **Phase 3**: ADBC / Flight SQL sinks, fan-out DAGs, connector SDK,
-  research paper program (E1/E2). RQ2 memoization semantics (E2.2) are
+- **Phase 3 product (E1)**: ADBC / Flight SQL sinks, fan-out DAGs,
+  connector SDK.
+- **Phase 3 research**: E2.1 offline dispatch model + mock frontier and
+  E2.2 memoization contract/measurements are published under
+  [`docs/research/`](https://github.com/akovari/pramen/tree/main/docs/research);
+  open: E2.3 comparative eval, E2.4 reproducibility harness, E2.5 paper.
+  Live Bedrock frontier remains tied to S2.2. RQ2 memoization semantics (E2.2) are
   formalized and measured offline — see
   [governed AI reuse contract](/pramen/concepts/governed-ai/#reuse-contract-rq2).
 

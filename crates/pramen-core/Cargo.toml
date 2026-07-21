@@ -20,7 +20,7 @@ serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync", "rt", "macros", "time", "net"] }
+tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "macros", "time", "net"] }
 tokio-postgres = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }

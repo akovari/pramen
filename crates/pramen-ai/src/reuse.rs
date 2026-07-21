@@ -193,6 +193,7 @@ fn classify_config(on_invalid: InvalidPolicy, execution: ExecutionMode) -> AiTra
         id: "rq2-classify".into(),
         model: "mock-1".into(),
         execution,
+        dispatch: None,
         inputs: vec!["description".into()],
         instruction: "classify the ticket for RQ2 memoization measurement".into(),
         output: AiOutput {

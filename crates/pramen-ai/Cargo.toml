@@ -28,7 +28,7 @@ serde_yaml_ng = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 # `time` for the provider-batch poll interval; `rt`/`net` for the Postgres ledger.
-tokio = { workspace = true, features = ["time", "rt", "net", "sync"] }
+tokio = { workspace = true, features = ["time", "rt", "rt-multi-thread", "net", "sync"] }
 tokio-postgres = { workspace = true }
 tracing = { workspace = true }
 
