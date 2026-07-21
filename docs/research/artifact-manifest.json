@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "title": "Pramen paper / benchmark reproducibility artifact (E2.4)",
+  "task": "E2.4",
+  "oneCommand": {
+    "regenerate": "mise run reproduce",
+    "check": "mise run reproduce-check",
+    "script": "./scripts/reproduce-artifact.sh"
+  },
+  "policy": {
+    "offline": "Default path: no network, no credentials. Safe for PR CI.",
+    "postgres": "Optional --with-postgres (or REPRODUCE_WITH_POSTGRES=1) runs the e2e bench suite; needs PRAMEN_POSTGRES_DSN.",
+    "cloud": "Competitor AI / live Bedrock legs stay env-gated (COMPARE_*, AWS_*); never required for PR green."
+  },
+  "figures": [
+    {
+      "id": "rq2-memoization",
+      "outputs": [
+        "docs/research/rq2-memoization-metrics.json"
+      ],
+      "docs": [
+        "docs/research/rq2-memoization.md"
+      ],
+      "regenerate": "./scripts/rq2-memoization.sh",
+      "check": "scenarios-equal-ignore-generatedAtUnix",
+      "tier": "offline",
+      "pinsCi": "cargo test -p pramen-ai reuse"
+    },
+    {
+      "id": "e2-1-dispatch-frontier",
+      "outputs": [
+        "docs/research/e2-1-dispatch-frontier.md"
+      ],
+      "docs": [
+        "docs/research/e2-1-dispatch-policy.md"
+      ],
+      "regenerate": "cargo run -q -p pramen -- ai dispatch-plan --sweep --out docs/research/e2-1-dispatch-frontier.md",
+      "check": "file-equal",
+      "tier": "offline"
+    },
+    {
+      "id": "compare-scoreboard",
+      "outputs": [
+        "docs/benchmarks/compare-scoreboard.json",
+        "docs/benchmarks/compare-scoreboard.md"
+      ],
+      "docs": [
+        "docs/compare/orientation.md"
+      ],
+      "regenerate": "./scripts/compare-scoreboard.sh",
+      "check": "./scripts/compare-scoreboard.sh --check",
+      "tier": "offline"
+    },
+    {
+      "id": "bench-e2e-v1",
+      "outputs": [
+        "docs/benchmarks/2026-07-12-v1.md"
+      ],
+      "regenerate": "./scripts/bench.sh",
+      "check": "manual-report-refresh",
+      "tier": "postgres",
+      "note": "Writes/updates the dated bench report; not auto-checked in CI (machine-dependent ranges)."
+    },
+    {
+      "id": "redpanda-connect-ai",
+      "outputs": [],
+      "harness": "compare/redpanda-connect/",
+      "tier": "cloud",
+      "status": "harness_ready"
+    },
+    {
+      "id": "docetl-extract",
+      "outputs": [],
+      "harness": "compare/docetl/",
+      "tier": "cloud",
+      "status": "harness_ready"
+    }
+  ]
+}

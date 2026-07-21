@@ -93,6 +93,22 @@ missing, add it in the same PR rather than improvising a synonym.
 - Any code path that can call a paid model must enforce budget ceilings
   before dispatch and must be covered by a test with a mock provider.
 
+## Research artifact discipline (E2.4)
+
+Published research figures regenerate from one command:
+
+| Command | Role |
+| --- | --- |
+| `mise run reproduce` | Regenerate offline figures (RQ2 JSON, E2.1 frontier MD, compare scoreboard) |
+| `mise run reproduce-check` | Fail on drift (wired into `mise run ci` / GitHub Actions) |
+| `docs/research/artifact-manifest.json` | Machine inventory of figures + tiers |
+| `docs/research/artifact-evaluation.md` | Reviewer / AE checklist |
+
+**Rules for agents:** after changing dispatch cost model, reuse suite, or
+scoreboard inputs, run `mise run reproduce` in the same change. Do not
+hand-edit generated Markdown/JSON outputs. Postgres bench and cloud
+competitor legs stay optional (`--with-postgres`, `COMPARE_*`).
+
 ## Competitive comparison discipline
 
 Public comparisons are split so prose and numbers do not fight:

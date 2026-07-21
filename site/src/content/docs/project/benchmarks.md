@@ -11,7 +11,9 @@ benchmark-suite reports in
 [`docs/benchmarks/`](https://github.com/akovari/pramen/tree/main/docs/benchmarks).
 For buyer-oriented positioning against alternatives, see
 [Compared to alternatives](/pramen/project/comparison/) (orientation +
-generated scoreboard). These are the headline results so far. All numbers below are
+generated scoreboard). Regenerate offline research figures with
+`mise run reproduce` ([AE checklist](https://github.com/akovari/pramen/blob/main/docs/research/artifact-evaluation.md)).
+These are the headline results so far. All numbers below are
 from an Apple Silicon laptop; treat them as relative evidence, not absolute
 promises.
 

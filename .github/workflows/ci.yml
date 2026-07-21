@@ -117,13 +117,16 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./scripts/validate-deploy.sh
 
-  compare-scoreboard:
-    # Competitive scoreboard: fail if Markdown/JSON drift from generator.
-    name: Compare scoreboard
+  reproduce-artifact:
+    # E2.4: offline research figures must match generators (no Postgres/cloud).
+    name: Reproduce artifact
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: ./scripts/compare-scoreboard.sh --check
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/reproduce-artifact.sh --check
 
   docs:
     name: Docs

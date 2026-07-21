@@ -89,6 +89,14 @@ run = "./scripts/compare-scoreboard.sh"
 description = "Fail if compare-scoreboard.md/json is stale"
 run = "./scripts/compare-scoreboard.sh --check"
 
+[tasks.reproduce]
+description = "E2.4: regenerate offline research figures (RQ2, frontier, scoreboard)"
+run = "./scripts/reproduce-artifact.sh"
+
+[tasks.reproduce-check]
+description = "E2.4: fail if published research figures drift from generators"
+run = "./scripts/reproduce-artifact.sh --check"
+
 [tasks.ci]
 description = "The full local gate; identical checks run in GitHub Actions"
-depends = ["lint", "deny", "test", "docs", "validate-deploy", "compare-scoreboard-check"]
+depends = ["lint", "deny", "test", "docs", "validate-deploy", "reproduce-check"]

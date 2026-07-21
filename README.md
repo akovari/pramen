@@ -128,6 +128,8 @@ Headline numbers (each links a report — laptop-relative, not a cloud SLA):
 
 Agents regenerate the scoreboard with `mise run compare-scoreboard` when
 load path, ledger, or compare harnesses change (see `AGENTS.md`).
+Regenerate **all** offline research figures with `mise run reproduce`
+([checklist](docs/research/artifact-evaluation.md)).
 
 ## Current status
 

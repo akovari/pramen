@@ -5,7 +5,7 @@
     "offline": "Regenerate on PRs that touch load path, COPY, ledger/reuse, bench, or compare harness (`mise run compare-scoreboard`). CI runs `--check`.",
     "cloud": "Competitor AI / warehouse legs are env-gated and budget-capped; not required for PR green."
   },
-  "generatedAt": "2026-07-21T10:06:14Z",
+  "generatedAt": "2026-07-21T10:12:40Z",
   "sources": [
     "docs/benchmarks/2026-07-12-v1.md",
     "docs/spikes/s1-3-postgres-copy.md",

@@ -67,8 +67,11 @@ This page is the honest summary. Workspace version: **0.2.0**.
   [`docs/research/`](https://github.com/akovari/pramen/tree/main/docs/research).
   E2.3 scaffolding shipped: [Compared to alternatives](/pramen/project/comparison/)
   (orientation + generated scoreboard + `compare/` harnesses); measured
-  competitor AI / warehouse legs still open. Also open: E2.4 reproducibility
-  harness, E2.5 paper. Live Bedrock frontier remains tied to S2.2.
+  competitor AI / warehouse legs still open. **E2.4 done:**
+  `mise run reproduce` / `reproduce-check` +
+  [artifact evaluation checklist](https://github.com/akovari/pramen/blob/main/docs/research/artifact-evaluation.md).
+  Open: E2.5 paper (needs venue ADR). Live Bedrock frontier remains tied to
+  S2.2.
   [Governed AI reuse contract](/pramen/concepts/governed-ai/#reuse-contract-rq2).
 
 ## Engineering standards
