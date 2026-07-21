@@ -357,7 +357,7 @@ fn load(file: &PathBuf) -> Result<PipelineSpec, ExitCode> {
 fn explain(spec: &PipelineSpec) {
     println!("pipeline: {}", spec.metadata.name);
 
-    let SourceSpec::ObjectStore { url, format } = &spec.spec.source;
+    let SourceSpec::ObjectStore { url, format, .. } = &spec.spec.source;
     let format = match format {
         FormatSpec::Parquet => "parquet",
         FormatSpec::Ndjson => "ndjson",

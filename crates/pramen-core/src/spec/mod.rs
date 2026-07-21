@@ -18,8 +18,8 @@ pub use error::{SpecError, ValidationIssue};
 pub use types::{
     AiBreaker, AiBudget, AiOutput, AiTransform, AiValidation, ApiVersion, CheckpointSpec,
     ExecutionMode, FieldSpec, FieldType, FormatSpec, InvalidPolicy, Kind, Metadata, ModelBatchSpec,
-    ModelSpec, PipelineSpec, PipelineSpecBody, RuntimeSpec, SinkMode, SinkSpec, SourceSpec,
-    SqlTransform, TransformSpec, WasmLimitsSpec, WasmTransform,
+    ModelSpec, PipelineSpec, PipelineSpecBody, ResidencySpec, RuntimeSpec, SinkMode, SinkSpec,
+    SourceSpec, SqlTransform, TransformSpec, WasmLimitsSpec, WasmTransform,
 };
 
 /// Parse a YAML document into a validated [`PipelineSpec`].

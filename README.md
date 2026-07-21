@@ -114,15 +114,18 @@ Early implementation; no stable public API yet. What runs today:
 - `pramen validate` and `pramen explain` accept the versioned v1alpha1
   pipeline document, report every validation issue with its path, and ship a
   [generated JSON Schema](docs/schema/pipeline.v1alpha1.schema.json);
-- `pramen run` executes pipelines end to end: Parquet or NDJSON — local or
-  `s3://` (S3-compatible stores like MinIO included) — → per-batch
-  DataFusion SQL → transactional binary `COPY` into PostgreSQL, with
-  bounded channels, backpressure, Ctrl-C cancellation, and a run summary
-  (see [examples/local-parquet-to-postgres.yaml](examples/local-parquet-to-postgres.yaml));
+- `pramen run` executes pipelines end to end: Parquet or NDJSON — local,
+  `s3://` (MinIO included), `gs://`, or Azure Blob (`az://`, `abfs(s)://`)
+  — → per-batch DataFusion SQL → transactional binary `COPY` into
+  PostgreSQL, with bounded channels, backpressure, Ctrl-C cancellation, and
+  a run summary (see
+  [examples/local-parquet-to-postgres.yaml](examples/local-parquet-to-postgres.yaml));
+  optional `runtime.residency` validates declared source locations and model
+  regions offline (no live cloud lookups);
 - checkpointed incremental runs (ADR 0006): file-granular work units on a
   crash-safe append-only store — replaying a finished run loads nothing, a
-  grown directory (or `s3://` prefix — unit identity from a single `LIST`,
-  MinIO-verified) loads only new files;
+  grown directory (or cloud prefix — unit identity from a single `LIST`,
+  MinIO-verified for S3) loads only new files;
 - `upsert` sink mode: stage + `ON CONFLICT` merge on declared keys, so
   replays are idempotent — the at-least-once contract is pinned by tests
   on both sides (append duplicates, upsert does not);
@@ -253,8 +256,8 @@ does not block the release:
 1. **Live cloud acceptance** (needs AWS credentials): S1.1 Bedrock Converse
    online, S2.1 batch crash/reconcile on real Bedrock, S2.2 model
    quality-cost frontier runs, and P2.1 1M-record S3 → Aurora acceptance.
-2. **Phase 2** (post-v0.1): Wasmtime integration (X1.1), Azure/GCS sources,
-   WASM transforms in the pipeline spec.
+2. **Phase 2** (post-v0.1): OCI distribution for WASM components (X1.4),
+   `ai.generate` (X1.7), shared ledger/checkpoint backends (X1.8).
 
 See the [v0.1 release checklist](docs/release/v0.1-checklist.md) and
 [CONTRIBUTING.md](CONTRIBUTING.md) to build from source or install release

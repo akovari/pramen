@@ -19,10 +19,11 @@ pub(super) fn validate(spec: &PipelineSpec) -> Vec<ValidationIssue> {
 
     validate_name(&spec.metadata.name, &mut push);
     validate_models(spec, &mut push);
-    validate_source(&spec.spec.source, &mut push);
+    validate_source(spec, &mut push);
     validate_transforms(spec, &mut push);
     validate_sink(&spec.spec.sink, &mut push);
     validate_runtime(spec, &mut push);
+    validate_residency(spec, &mut push);
 
     issues
 }
@@ -72,11 +73,31 @@ fn validate_models(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
     }
 }
 
-fn validate_source(source: &SourceSpec, push: &mut impl FnMut(&str, String)) {
-    match source {
-        SourceSpec::ObjectStore { url, .. } => {
+fn validate_source(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
+    match &spec.spec.source {
+        SourceSpec::ObjectStore { url, location, .. } => {
             if url.trim().is_empty() {
                 push("spec.source.url", "must not be empty".to_owned());
+                return;
+            }
+            match classify_source_url(url) {
+                SourceUrlKind::Unsupported(scheme) => push(
+                    "spec.source.url",
+                    format!(
+                        "unsupported scheme `{scheme}`; supported: local paths, file://, \
+                         s3://, gs://, az://, azure://, adl://, abfs://, abfss://, and \
+                         Azure https://{{account}}.blob|dfs.core.windows.net URLs"
+                    ),
+                ),
+                SourceUrlKind::Cloud { .. } | SourceUrlKind::Local => {}
+            }
+            if let Some(location) = location
+                && location.trim().is_empty()
+            {
+                push(
+                    "spec.source.location",
+                    "must not be empty when set".to_owned(),
+                );
             }
         }
     }
@@ -303,5 +324,181 @@ fn validate_runtime(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
             "spec.runtime.checkpoint.url",
             "must not be empty".to_owned(),
         );
+    }
+}
+
+/// Enforce [`RuntimeSpec::residency`] against declared source and model
+/// locations — declaration-only, no live cloud lookups (ADR 0005).
+fn validate_residency(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
+    let Some(residency) = &spec.spec.runtime.residency else {
+        return;
+    };
+
+    if residency.allowed_locations.is_empty() {
+        push(
+            "spec.runtime.residency.allowedLocations",
+            "must list at least one allowed location".to_owned(),
+        );
+        return;
+    }
+    let allowed: BTreeSet<&str> = residency
+        .allowed_locations
+        .iter()
+        .map(String::as_str)
+        .collect();
+    for (index, location) in residency.allowed_locations.iter().enumerate() {
+        if location.trim().is_empty() {
+            push(
+                &format!("spec.runtime.residency.allowedLocations[{index}]"),
+                "must not be empty".to_owned(),
+            );
+        }
+    }
+
+    if let Some(schemes) = &residency.allowed_schemes {
+        if schemes.is_empty() {
+            push(
+                "spec.runtime.residency.allowedSchemes",
+                "must list at least one scheme when set".to_owned(),
+            );
+        }
+        for (index, scheme) in schemes.iter().enumerate() {
+            if scheme.trim().is_empty() {
+                push(
+                    &format!("spec.runtime.residency.allowedSchemes[{index}]"),
+                    "must not be empty".to_owned(),
+                );
+            }
+        }
+    }
+
+    for (name, model) in &spec.spec.models {
+        if let Some(region) = &model.region {
+            if region.trim().is_empty() {
+                push(
+                    &format!("spec.models.{name}.region"),
+                    "must not be empty when set".to_owned(),
+                );
+            } else if !allowed.contains(region.as_str()) {
+                push(
+                    &format!("spec.models.{name}.region"),
+                    format!(
+                        "`{region}` is outside runtime.residency.allowedLocations [{}]",
+                        residency.allowed_locations.join(", ")
+                    ),
+                );
+            }
+        }
+    }
+
+    let SourceSpec::ObjectStore { url, location, .. } = &spec.spec.source;
+    let kind = classify_source_url(url);
+    if let SourceUrlKind::Cloud { scheme } = &kind {
+        if let Some(allowed_schemes) = &residency.allowed_schemes {
+            let allowed_schemes: BTreeSet<String> = allowed_schemes
+                .iter()
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !allowed_schemes.is_empty() && !allowed_schemes.contains(scheme) {
+                push(
+                    "spec.source.url",
+                    format!(
+                        "scheme `{scheme}` is outside runtime.residency.allowedSchemes [{}]",
+                        allowed_schemes.into_iter().collect::<Vec<_>>().join(", ")
+                    ),
+                );
+            }
+        }
+        match location {
+            None => push(
+                "spec.source.location",
+                "required when runtime.residency is set and the source URL is a \
+                 cloud scheme (declare the bucket/container region offline; Pramen \
+                 does not look it up at plan time)"
+                    .to_owned(),
+            ),
+            Some(loc) if !loc.trim().is_empty() && !allowed.contains(loc.as_str()) => push(
+                "spec.source.location",
+                format!(
+                    "`{loc}` is outside runtime.residency.allowedLocations [{}]",
+                    residency.allowed_locations.join(", ")
+                ),
+            ),
+            Some(_) => {}
+        }
+    }
+}
+
+/// Classification of a source URL for validation (and docs).
+#[derive(Debug, PartialEq, Eq)]
+enum SourceUrlKind {
+    Local,
+    Cloud { scheme: String },
+    Unsupported(String),
+}
+
+fn classify_source_url(url: &str) -> SourceUrlKind {
+    let trimmed = url.trim();
+    if !trimmed.contains("://") {
+        return SourceUrlKind::Local;
+    }
+    let scheme = trimmed
+        .split_once("://")
+        .map(|(s, _)| s.to_ascii_lowercase())
+        .unwrap_or_default();
+    match scheme.as_str() {
+        "file" => SourceUrlKind::Local,
+        "s3" | "gs" | "az" | "azure" | "adl" | "abfs" | "abfss" => SourceUrlKind::Cloud { scheme },
+        "https" if is_azure_https_url(trimmed) => SourceUrlKind::Cloud { scheme },
+        other => SourceUrlKind::Unsupported(other.to_owned()),
+    }
+}
+
+fn is_azure_https_url(url: &str) -> bool {
+    let Some((_, rest)) = url.split_once("://") else {
+        return false;
+    };
+    let host = rest.split('/').next().unwrap_or_default();
+    host.ends_with(".blob.core.windows.net")
+        || host.ends_with(".dfs.core.windows.net")
+        || host.ends_with(".blob.fabric.microsoft.com")
+        || host.ends_with(".dfs.fabric.microsoft.com")
+}
+
+#[cfg(test)]
+mod url_tests {
+    use super::*;
+
+    #[test]
+    fn classifies_supported_cloud_schemes() {
+        assert!(matches!(
+            classify_source_url("gs://bucket/prefix/"),
+            SourceUrlKind::Cloud { scheme } if scheme == "gs"
+        ));
+        assert!(matches!(
+            classify_source_url("az://container/prefix/"),
+            SourceUrlKind::Cloud { scheme } if scheme == "az"
+        ));
+        assert!(matches!(
+            classify_source_url("abfss://fs@acct.dfs.core.windows.net/p/"),
+            SourceUrlKind::Cloud { scheme } if scheme == "abfss"
+        ));
+        assert!(matches!(
+            classify_source_url("https://acct.blob.core.windows.net/c/p"),
+            SourceUrlKind::Cloud { scheme } if scheme == "https"
+        ));
+        assert!(matches!(
+            classify_source_url("file:///tmp/in/"),
+            SourceUrlKind::Local
+        ));
+        assert!(matches!(
+            classify_source_url("/tmp/in/"),
+            SourceUrlKind::Local
+        ));
+        assert!(matches!(
+            classify_source_url("http://example.com/x"),
+            SourceUrlKind::Unsupported(_)
+        ));
     }
 }

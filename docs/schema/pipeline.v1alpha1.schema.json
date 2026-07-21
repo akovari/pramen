@@ -365,6 +365,33 @@
       ],
       "type": "object"
     },
+    "ResidencySpec": {
+      "additionalProperties": false,
+      "description": "Offline data-residency constraints for sources and models.\n\nLocations are opaque provider identifiers compared case-sensitively to\ndeclared `source.location` and `models.*.region` values. Schemes are\nthe URL scheme tokens (`s3`, `gs`, `az`, `abfs`, `abfss`, …) compared\ncase-insensitively. Local/`file` sources are always permitted.",
+      "properties": {
+        "allowedLocations": {
+          "description": "Allowed region / location identifiers (non-empty).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allowedSchemes": {
+          "description": "Optional allow-list of cloud URL schemes. When omitted, every\nscheme Pramen supports is accepted.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "allowedLocations"
+      ],
+      "type": "object"
+    },
     "RuntimeSpec": {
       "additionalProperties": false,
       "description": "Engine tuning and checkpointing.",
@@ -386,6 +413,17 @@
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
+        },
+        "residency": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResidencySpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional data-residency constraints enforced at plan validation.\n\nWhen set, cloud source URLs must declare [`SourceSpec`] `location`,\nand that location plus every model `region` must appear in\n[`ResidencySpec`] `allowedLocations`. Scheme allow-lists are\noptional. Validation is declaration-only — no live cloud lookups\n(ADR 0005)."
         },
         "targetBatchBytes": {
           "default": 8388608,
@@ -471,12 +509,19 @@
               "$ref": "#/$defs/FormatSpec",
               "description": "File format of the objects."
             },
+            "location": {
+              "description": "Declared storage location / region for offline residency checks\n(e.g. `eu-central-1`, `europe-west1`, `westeurope`). Required\nwhen [`RuntimeSpec::residency`] is set and `url` is a cloud\nscheme; never probed from the provider at plan time (ADR 0005).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "type": {
               "const": "object_store",
               "type": "string"
             },
             "url": {
-              "description": "Location URL: `s3://…`, `file://…`, or a bare local path prefix.",
+              "description": "Location URL: `s3://…`, `gs://…`, `az://…` / `abfs(s)://…`,\n`file://…`, or a bare local path prefix. Credentials come from\nthe standard provider environment, never from this document.",
               "type": "string"
             }
           },

@@ -54,15 +54,22 @@ Everything runs through mise; CI runs the same tasks.
 - Shared test fixtures live in the dev-only `pramen-testkit` crate: L1
   HTTP stubs (`http::one_shot_raw`, `http::one_shot_json`,
   `http::serve_router`, all capturing requests) and the L2 env guards
-  (`env::postgres_dsn()`, `env::s3_url()`). Use them instead of
-  hand-rolling `TcpListener` loops or `std::env::var` guards in tests.
+  (`env::postgres_dsn()`, `env::s3_url()`, `env::azure_url()`,
+  `env::gcs_url()`). Use them instead of hand-rolling `TcpListener` loops
+  or `std::env::var` guards in tests.
 - L2 database tests are env-guarded: set `PRAMEN_TEST_POSTGRES_DSN` to run
   them, unset to skip. A machine-local `mise.local.toml` (gitignored) is the
   right place for that variable when a local PostgreSQL is available.
-- L2 object-store tests are likewise guarded by `PRAMEN_TEST_S3_URL`
-  (e.g. `s3://pramen-test/events/`) with standard `AWS_*` variables pointing
-  at a local MinIO (`AWS_ENDPOINT=http://localhost:9000`,
-  `AWS_ALLOW_HTTP=true`).
+- L2 object-store tests are likewise guarded:
+  - `PRAMEN_TEST_S3_URL` (e.g. `s3://pramen-test/events/`) with standard
+    `AWS_*` variables pointing at local MinIO (`AWS_ENDPOINT=http://localhost:9000`,
+    `AWS_ALLOW_HTTP=true`);
+  - `PRAMEN_TEST_AZURE_URL` (e.g. `az://pramen-test/events/`) with
+    `AZURE_STORAGE_ACCOUNT_NAME` / `AZURE_STORAGE_ACCOUNT_KEY` (Azurite:
+    `AZURE_STORAGE_ENDPOINT` + `AZURE_ALLOW_HTTP=true`);
+  - `PRAMEN_TEST_GCS_URL` (e.g. `gs://pramen-test/events/`) with a
+    service-account JSON (`GOOGLE_SERVICE_ACCOUNT` /
+    `GOOGLE_SERVICE_ACCOUNT_KEY`) that points at the emulator.
 - Runtime environment variables: `PRAMEN_LEDGER_PATH` overrides the
   inference ledger location (default `.pramen/ledger.sqlite`), and
   `PRAMEN_OPENAI_API_KEY` supplies the optional key for `openai-compat`

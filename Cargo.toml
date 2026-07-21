@@ -35,7 +35,7 @@ clap = { version = "4", features = ["derive", "env"] }
 criterion = "0.7"
 datafusion = "50"
 futures = "0.3"
-object_store = { version = "0.12", features = ["aws"] }
+object_store = { version = "0.12", features = ["aws", "azure", "gcp"] }
 # OCI Distribution client for WASM component pulls (X1.4). rustls only;
 # default `test-registry` feature is unused in production paths.
 oci-client = { version = "0.17", default-features = false, features = ["rustls-tls"] }

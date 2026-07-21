@@ -280,7 +280,7 @@ fn open_checkpoint_store(url: &str) -> Result<FileCheckpointStore, String> {
 /// Enumerate the source into checkpointable work units (local paths,
 /// `file://`, or `s3://`).
 async fn enumerate_units(spec: &PipelineSpec) -> Result<Vec<WorkUnit>, String> {
-    let SourceSpec::ObjectStore { url, format } = &spec.spec.source;
+    let SourceSpec::ObjectStore { url, format, .. } = &spec.spec.source;
     let extensions: &[&str] = match format {
         FormatSpec::Parquet => &["parquet"],
         FormatSpec::Ndjson => &["ndjson", "jsonl", "json"],
@@ -294,7 +294,7 @@ async fn plan_source(
     spec: &PipelineSpec,
     paths: Option<Vec<String>>,
 ) -> Result<Box<dyn Source>, String> {
-    let SourceSpec::ObjectStore { url, format } = &spec.spec.source;
+    let SourceSpec::ObjectStore { url, format, .. } = &spec.spec.source;
     let memory_limit =
         usize::try_from(spec.spec.runtime.max_inflight_bytes).unwrap_or(256 * 1024 * 1024);
     let paths = paths.unwrap_or_else(|| vec![url.clone()]);

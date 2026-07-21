@@ -16,6 +16,11 @@ ignore = [
     # upgrade. Drop both entries then.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+    # rustls-pemfile is unmaintained (archived); object_store 0.12 pulls it
+    # for Azure/GCS TLS client config. It is a thin wrapper over
+    # rustls-pki-types PEM parsing. No safe upgrade until object_store drops
+    # the dependency (bundled with the same datafusion/object_store bump).
+    "RUSTSEC-2025-0134",
     # Wasmtime 38.x (X1.1 WASM host): open advisories for sandbox escapes,
     # WASI edge cases, and Winch/Cranelift bugs. Guests are operator-supplied
     # components run with fuel/memory limits and no ambient WASI filesystem;

@@ -106,6 +106,100 @@ fn inflight_smaller_than_batch_is_rejected() {
 }
 
 #[test]
+fn unsupported_source_scheme_is_rejected() {
+    let yaml = EXAMPLE.replace(
+        "url: s3://example-input/events/",
+        "url: http://example.com/x",
+    );
+    let issues = issues_of(&yaml);
+    assert!(
+        issues.iter().any(|i| i.contains("unsupported scheme")),
+        "issues: {issues:?}"
+    );
+}
+
+#[test]
+fn residency_rejects_model_region_outside_allow_list() {
+    let yaml = EXAMPLE.replace(
+        "    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
+        "    residency:\n      allowedLocations: [eu-west-1]\n    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
+    );
+    // Source is cloud and residency is set — also needs location; inject both
+    // expectations via a fuller document.
+    let yaml = yaml.replace(
+        "    url: s3://example-input/events/\n    format:",
+        "    url: s3://example-input/events/\n    location: eu-west-1\n    format:",
+    );
+    let issues = issues_of(&yaml);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.contains("spec.models.enrichment.region") && i.contains("eu-central-1")),
+        "issues: {issues:?}"
+    );
+}
+
+#[test]
+fn residency_requires_source_location_for_cloud_urls() {
+    let yaml = EXAMPLE.replace(
+        "    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
+        "    residency:\n      allowedLocations: [eu-central-1]\n    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
+    );
+    let issues = issues_of(&yaml);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.starts_with("spec.source.location:") && i.contains("required")),
+        "issues: {issues:?}"
+    );
+}
+
+#[test]
+fn residency_rejects_disallowed_source_scheme() {
+    let yaml = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: residency-gcs
+spec:
+  source:
+    type: object_store
+    url: gs://eu-data/events/
+    location: europe-west1
+    format:
+      type: parquet
+  sink:
+    type: postgres
+    target: public.out
+  runtime:
+    residency:
+      allowedLocations: [europe-west1]
+      allowedSchemes: [s3]
+";
+    let issues = issues_of(yaml);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.contains("spec.source.url") && i.contains("gs")),
+        "issues: {issues:?}"
+    );
+}
+
+#[test]
+fn residency_accepts_matching_cloud_source_and_model() {
+    let yaml = EXAMPLE
+        .replace(
+            "    url: s3://example-input/events/\n    format:",
+            "    url: s3://example-input/events/\n    location: eu-central-1\n    format:",
+        )
+        .replace(
+            "    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
+            "    residency:\n      allowedLocations: [eu-central-1]\n      allowedSchemes: [s3]\n    checkpoint:\n      url: file:///var/lib/pramen/checkpoints/\n",
+        );
+    assert!(issues_of(&yaml).is_empty(), "{:?}", issues_of(&yaml));
+}
+
+#[test]
 fn defaults_are_applied() {
     let yaml = "\
 apiVersion: pramen.dev/v1alpha1
