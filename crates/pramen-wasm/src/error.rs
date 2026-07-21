@@ -18,6 +18,18 @@ pub enum WasmError {
     /// Arrow IPC encode or decode failed.
     #[error("arrow ipc: {0}")]
     Ipc(String),
+    /// OCI pull failed (network, manifest, or empty artifact).
+    #[error("OCI pull failed: {0}")]
+    Oci(String),
+    /// The OCI reference is not on the configured allow-list.
+    #[error("OCI component `{reference}` is not on the WASM OCI allow-list")]
+    NotAllowlisted {
+        /// The rejected `oci://…@sha256:…` reference.
+        reference: String,
+    },
+    /// Signature verification hook rejected the artifact.
+    #[error("OCI signature verification failed: {0}")]
+    Signature(String),
 }
 
 impl WasmError {
@@ -35,5 +47,9 @@ impl WasmError {
 
     pub(crate) fn trap_message(message: impl Into<String>) -> Self {
         Self::Trap(message.into())
+    }
+
+    pub(crate) fn oci(message: impl Into<String>) -> Self {
+        Self::Oci(message.into())
     }
 }

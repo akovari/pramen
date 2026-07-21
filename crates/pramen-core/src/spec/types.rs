@@ -169,8 +169,9 @@ pub struct SqlTransform {
 pub struct WasmTransform {
     /// Unique step identifier.
     pub id: String,
-    /// Path to a `.wasm` component artifact (absolute or relative to the
-    /// pipeline document).
+    /// Component artifact: a filesystem path (absolute or relative to the
+    /// pipeline document), or an OCI reference pinned by digest
+    /// (`oci://registry/repo@sha256:…`). Tag-only OCI refs are rejected.
     pub component: String,
     /// Resource limits enforced on every batch invocation.
     #[serde(default)]
@@ -418,6 +419,11 @@ pub struct RuntimeSpec {
     /// Checkpoint location; omit to run without resumability.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<CheckpointSpec>,
+    /// Digests (`sha256:…`) and/or `registry/repository` prefixes permitted
+    /// for OCI-distributed WASM components. Merged with
+    /// `PRAMEN_WASM_OCI_ALLOWLIST`. Empty (and empty env) denies all OCI pulls.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wasm_oci_allowlist: Vec<String>,
 }
 
 fn default_target_batch_bytes() -> u64 {
@@ -434,6 +440,7 @@ impl Default for RuntimeSpec {
             target_batch_bytes: default_target_batch_bytes(),
             max_inflight_bytes: default_max_inflight_bytes(),
             checkpoint: None,
+            wasm_oci_allowlist: Vec::new(),
         }
     }
 }

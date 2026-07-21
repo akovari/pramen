@@ -4,8 +4,10 @@ use crate::cache::ArtifactCache;
 use crate::host::PreparedComponent;
 use crate::ipc;
 use crate::limits::InvocationLimits;
+use crate::oci::{self, OciLoadOptions};
 use arrow::record_batch::RecordBatch;
 use pramen_core::runtime::{StageError, Transform};
+use std::path::Path;
 use std::sync::Arc;
 
 /// Applies a WebAssembly component transform to each incoming batch.
@@ -25,17 +27,36 @@ impl WasmTransform {
         Self { prepared, limits }
     }
 
-    /// Load a component through `cache` and build the operator.
+    /// Load a local-path component through `cache` and build the operator.
     ///
     /// # Errors
     ///
     /// Returns [`StageError::External`] when the component cannot be loaded.
     pub fn from_cache(
         cache: &ArtifactCache,
-        path: &std::path::Path,
+        path: &Path,
         limits: InvocationLimits,
     ) -> Result<Self, StageError> {
         let prepared = cache.load_path(path).map_err(StageError::external)?;
+        Ok(Self::new(prepared, limits))
+    }
+
+    /// Load a path or OCI digest reference through `cache` and build the operator.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StageError::External`] when allow-list, pull, signature, or
+    /// load fails.
+    pub async fn from_component(
+        cache: &ArtifactCache,
+        pipeline_dir: &Path,
+        component: &str,
+        limits: InvocationLimits,
+        oci: &OciLoadOptions,
+    ) -> Result<Self, StageError> {
+        let prepared = oci::load_component(cache, pipeline_dir, component, oci)
+            .await
+            .map_err(StageError::external)?;
         Ok(Self::new(prepared, limits))
     }
 }

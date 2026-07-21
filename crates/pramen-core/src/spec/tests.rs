@@ -221,3 +221,57 @@ spec:
         "issues: {issues:?}"
     );
 }
+
+#[test]
+fn wasm_oci_tag_only_component_is_rejected() {
+    let yaml = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: wasm-oci
+spec:
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  transforms:
+    - id: enrich
+      type: wasm
+      component: oci://ghcr.io/acme/enrich:latest
+  sink:
+    type: postgres
+    target: public.out
+";
+    let issues = issues_of(yaml);
+    assert_eq!(issues.len(), 1, "issues: {issues:?}");
+    assert!(issues[0].starts_with("spec.transforms[0].component:"));
+    assert!(issues[0].contains("sha256"));
+}
+
+#[test]
+fn wasm_oci_digest_component_validates() {
+    let yaml = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: wasm-oci
+spec:
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  transforms:
+    - id: enrich
+      type: wasm
+      component: oci://ghcr.io/acme/enrich@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  runtime:
+    wasmOciAllowlist:
+      - sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  sink:
+    type: postgres
+    target: public.out
+";
+    parse(yaml).unwrap();
+}
