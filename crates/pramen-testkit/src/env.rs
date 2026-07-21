@@ -19,6 +19,26 @@ pub fn s3_url() -> Option<String> {
     guarded("PRAMEN_TEST_S3_URL")
 }
 
+/// The object-store URL for L2 Azure Blob tests against Azurite, e.g.
+/// `az://pramen-test/events/`. Pair with `AZURE_STORAGE_ACCOUNT_NAME`,
+/// `AZURE_STORAGE_ACCOUNT_KEY`, and for the emulator
+/// `AZURE_STORAGE_ENDPOINT` + `AZURE_ALLOW_HTTP=true`. `None` when
+/// `PRAMEN_TEST_AZURE_URL` is unset.
+#[must_use]
+pub fn azure_url() -> Option<String> {
+    guarded("PRAMEN_TEST_AZURE_URL")
+}
+
+/// The object-store URL for L2 GCS tests against a local emulator, e.g.
+/// `gs://pramen-test/events/`. Pair with a service-account JSON
+/// (`GOOGLE_SERVICE_ACCOUNT` / `GOOGLE_SERVICE_ACCOUNT_KEY`) that points
+/// at the emulator (`gcs_base_url`, `disable_oauth`). `None` when
+/// `PRAMEN_TEST_GCS_URL` is unset.
+#[must_use]
+pub fn gcs_url() -> Option<String> {
+    guarded("PRAMEN_TEST_GCS_URL")
+}
+
 fn guarded(variable: &str) -> Option<String> {
     match std::env::var(variable) {
         Ok(value) => Some(value),

@@ -102,6 +102,12 @@ run). Exceeding a budget is a validation failure before spend, not an alert
 after it.
 _Avoid_: quota, limit (alone).
 
+**Residency**:
+Declared constraints on where source data and model inference may live,
+enforced at plan validation from pipeline metadata (`runtime.residency`,
+`source.location`, `models.*.region`) without live cloud lookups.
+_Avoid_: data locality, geo-pin (as synonyms in specs).
+
 **Checkpoint**:
 The durable record that a work unit was committed at the sink. Distinct from
 the ledger: checkpoints track source progress; the ledger tracks inference.

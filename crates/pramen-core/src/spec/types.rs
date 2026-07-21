@@ -101,10 +101,18 @@ pub enum SourceSpec {
     /// Files in an object store or on the local filesystem.
     #[serde(rename_all = "camelCase")]
     ObjectStore {
-        /// Location URL: `s3://…`, `file://…`, or a bare local path prefix.
+        /// Location URL: `s3://…`, `gs://…`, `az://…` / `abfs(s)://…`,
+        /// `file://…`, or a bare local path prefix. Credentials come from
+        /// the standard provider environment, never from this document.
         url: String,
         /// File format of the objects.
         format: FormatSpec,
+        /// Declared storage location / region for offline residency checks
+        /// (e.g. `eu-central-1`, `europe-west1`, `westeurope`). Required
+        /// when [`RuntimeSpec::residency`] is set and `url` is a cloud
+        /// scheme; never probed from the provider at plan time (ADR 0005).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        location: Option<String>,
     },
 }
 
@@ -403,6 +411,32 @@ pub struct RuntimeSpec {
     /// Checkpoint location; omit to run without resumability.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<CheckpointSpec>,
+    /// Optional data-residency constraints enforced at plan validation.
+    ///
+    /// When set, cloud source URLs must declare [`SourceSpec`] `location`,
+    /// and that location plus every model `region` must appear in
+    /// [`ResidencySpec`] `allowedLocations`. Scheme allow-lists are
+    /// optional. Validation is declaration-only — no live cloud lookups
+    /// (ADR 0005).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub residency: Option<ResidencySpec>,
+}
+
+/// Offline data-residency constraints for sources and models.
+///
+/// Locations are opaque provider identifiers compared case-sensitively to
+/// declared `source.location` and `models.*.region` values. Schemes are
+/// the URL scheme tokens (`s3`, `gs`, `az`, `abfs`, `abfss`, …) compared
+/// case-insensitively. Local/`file` sources are always permitted.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidencySpec {
+    /// Allowed region / location identifiers (non-empty).
+    pub allowed_locations: Vec<String>,
+    /// Optional allow-list of cloud URL schemes. When omitted, every
+    /// scheme Pramen supports is accepted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_schemes: Option<Vec<String>>,
 }
 
 fn default_target_batch_bytes() -> u64 {
@@ -419,6 +453,7 @@ impl Default for RuntimeSpec {
             target_batch_bytes: default_target_batch_bytes(),
             max_inflight_bytes: default_max_inflight_bytes(),
             checkpoint: None,
+            residency: None,
         }
     }
 }

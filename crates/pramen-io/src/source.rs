@@ -5,6 +5,7 @@ use datafusion::execution::memory_pool::FairSpillPool;
 use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion::prelude::{NdJsonReadOptions, ParquetReadOptions, SessionConfig, SessionContext};
 use futures::StreamExt;
+use object_store::ObjectStore;
 use pramen_core::checkpoint::WorkUnit;
 use pramen_core::runtime::{Source, StageError};
 use std::sync::Arc;
@@ -12,19 +13,19 @@ use std::sync::Arc;
 /// Enumerate the source files under a URL as checkpointable work units
 /// (architecture §11: one immutable file = one unit).
 ///
-/// A file URL yields one unit; a directory (or `s3://` prefix) yields one
+/// A file URL yields one unit; a directory (or cloud prefix) yields one
 /// unit per contained file whose extension is in `extensions`
 /// (non-recursive, matching DataFusion's single-level listing behavior).
-/// S3 identity comes from the object listing itself: key, size, and
+/// Cloud identity comes from the object listing itself: key, size, and
 /// last-modified — one `LIST` per run, no per-object requests.
 ///
 /// # Errors
 ///
-/// Returns a [`StageError`] when the URL scheme is unsupported (Azure
-/// Blob and GCS are tracked in X1.5) or the location cannot be read.
+/// Returns a [`StageError`] when the URL scheme is unsupported or the
+/// location cannot be read.
 pub async fn list_work_units(url: &str, extensions: &[&str]) -> Result<Vec<WorkUnit>, StageError> {
-    if let Some(rest) = url.strip_prefix("s3://") {
-        return list_s3_work_units(rest, url, extensions).await;
+    if let Some(cloud) = CloudUrl::parse(url)? {
+        return list_cloud_work_units(&cloud, extensions).await;
     }
     let path = local_path(url)?;
     let root = std::path::Path::new(&path);
@@ -70,33 +71,208 @@ pub async fn list_work_units(url: &str, extensions: &[&str]) -> Result<Vec<WorkU
     Ok(units)
 }
 
-/// Enumerate `s3://` work units from the object listing: key, size, and
-/// last-modified come back from a single `LIST` request (no per-object
-/// round trips). A URL whose final segment carries a matching extension
-/// names one object; otherwise it is treated as a prefix.
-async fn list_s3_work_units(
-    rest: &str,
+/// Parsed cloud object-store URL (S3, GCS, Azure Blob).
+#[derive(Debug, Clone)]
+struct CloudUrl {
+    /// Original URL string (for builders and errors).
+    raw: String,
+    /// Provider family.
+    kind: CloudKind,
+    /// Object key / prefix after the bucket or container.
+    key: String,
+    /// Base URL registered with DataFusion (`scheme://authority`).
+    base: url::Url,
+    /// Prefix used when reconstructing listed object URLs.
+    list_prefix: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloudKind {
+    S3,
+    Gcs,
+    Azure,
+}
+
+impl CloudUrl {
+    /// Parse a supported cloud URL, or `None` for local/`file://` paths.
+    fn parse(url: &str) -> Result<Option<Self>, StageError> {
+        if !url.contains("://") {
+            return Ok(None);
+        }
+        let parsed = url::Url::parse(url)
+            .map_err(|e| StageError::InvalidData(format!("source URL `{url}`: {e}")))?;
+        let scheme = parsed.scheme();
+        let kind = match scheme {
+            "s3" => CloudKind::S3,
+            "gs" => CloudKind::Gcs,
+            "az" | "azure" | "adl" | "abfs" | "abfss" => CloudKind::Azure,
+            "https" if is_azure_https_host(parsed.host_str()) => CloudKind::Azure,
+            "file" => return Ok(None),
+            other => {
+                return Err(StageError::InvalidData(format!(
+                    "unsupported source URL scheme `{other}` in `{url}`; v1 supports local \
+                     paths, file://, s3://, gs://, az://, azure://, adl://, abfs://, abfss://, \
+                     and Azure https://{{account}}.blob|dfs.core.windows.net URLs"
+                )));
+            }
+        };
+
+        let (key, list_prefix, base) = match kind {
+            CloudKind::S3 | CloudKind::Gcs => {
+                let bucket = parsed.host_str().filter(|h| !h.is_empty()).ok_or_else(|| {
+                    StageError::InvalidData(format!("source URL `{url}` has no bucket"))
+                })?;
+                let key = parsed.path().trim_start_matches('/').to_owned();
+                let list_prefix = format!("{scheme}://{bucket}");
+                let base = url::Url::parse(&list_prefix)
+                    .map_err(|e| StageError::InvalidData(format!("source URL `{url}`: {e}")))?;
+                (key, list_prefix, base)
+            }
+            CloudKind::Azure => {
+                let (_container, key, list_prefix, base) = parse_azure_parts(url, &parsed)?;
+                (key, list_prefix, base)
+            }
+        };
+
+        Ok(Some(Self {
+            raw: url.to_owned(),
+            kind,
+            key,
+            base,
+            list_prefix,
+        }))
+    }
+}
+
+fn is_azure_https_host(host: Option<&str>) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    host.ends_with(".blob.core.windows.net")
+        || host.ends_with(".dfs.core.windows.net")
+        || host.ends_with(".blob.fabric.microsoft.com")
+        || host.ends_with(".dfs.fabric.microsoft.com")
+}
+
+/// Extract container, key, list prefix, and DataFusion base URL for Azure.
+fn parse_azure_parts(
     url: &str,
+    parsed: &url::Url,
+) -> Result<(String, String, String, url::Url), StageError> {
+    let scheme = parsed.scheme();
+    match scheme {
+        "az" | "azure" | "adl" | "abfs" | "abfss" => {
+            // Forms:
+            //   az://container/path
+            //   abfss://container@account.dfs.core.windows.net/path
+            let host = parsed.host_str().unwrap_or_default();
+            let user = parsed.username();
+            let (container, list_prefix) = if !user.is_empty() {
+                // filesystem@account.dfs...
+                let container = user.to_owned();
+                let list_prefix = format!("{scheme}://{user}@{host}");
+                (container, list_prefix)
+            } else {
+                let container = host.to_owned();
+                if container.is_empty() {
+                    return Err(StageError::InvalidData(format!(
+                        "source URL `{url}` has no container"
+                    )));
+                }
+                let list_prefix = format!("{scheme}://{container}");
+                (container, list_prefix)
+            };
+            let key = parsed.path().trim_start_matches('/').to_owned();
+            let base = url::Url::parse(&list_prefix)
+                .map_err(|e| StageError::InvalidData(format!("source URL `{url}`: {e}")))?;
+            Ok((container, key, list_prefix, base))
+        }
+        "https" => {
+            // https://account.blob.core.windows.net/container/path
+            let mut segments = parsed
+                .path_segments()
+                .map(|s| s.filter(|p| !p.is_empty()).map(str::to_owned))
+                .ok_or_else(|| {
+                    StageError::InvalidData(format!("source URL `{url}` has no container"))
+                })?;
+            let container = segments.next().ok_or_else(|| {
+                StageError::InvalidData(format!("source URL `{url}` has no container"))
+            })?;
+            let key = segments.collect::<Vec<_>>().join("/");
+            let host = parsed.host_str().unwrap_or_default();
+            let list_prefix = format!("https://{host}/{container}");
+            let base = url::Url::parse(&list_prefix)
+                .map_err(|e| StageError::InvalidData(format!("source URL `{url}`: {e}")))?;
+            Ok((container, key, list_prefix, base))
+        }
+        other => Err(StageError::InvalidData(format!(
+            "unsupported Azure URL scheme `{other}` in `{url}`"
+        ))),
+    }
+}
+
+fn build_object_store(cloud: &CloudUrl) -> Result<Arc<dyn ObjectStore>, StageError> {
+    match cloud.kind {
+        CloudKind::S3 => {
+            let bucket = cloud.base.host_str().ok_or_else(|| {
+                StageError::InvalidData(format!("source URL `{}` has no bucket", cloud.raw))
+            })?;
+            let store = object_store::aws::AmazonS3Builder::from_env()
+                .with_bucket_name(bucket)
+                .build()
+                .map_err(|e| {
+                    StageError::InvalidData(format!(
+                        "S3 configuration for `{}`: {e} (set AWS_ACCESS_KEY_ID, \
+                         AWS_SECRET_ACCESS_KEY, AWS_REGION, and optionally AWS_ENDPOINT / \
+                         AWS_ALLOW_HTTP for S3-compatible services)",
+                        cloud.raw
+                    ))
+                })?;
+            Ok(Arc::new(store))
+        }
+        CloudKind::Gcs => {
+            let store = object_store::gcp::GoogleCloudStorageBuilder::from_env()
+                .with_url(&cloud.raw)
+                .build()
+                .map_err(|e| {
+                    StageError::InvalidData(format!(
+                        "GCS configuration for `{}`: {e} (set GOOGLE_SERVICE_ACCOUNT, \
+                         GOOGLE_SERVICE_ACCOUNT_PATH, or GOOGLE_SERVICE_ACCOUNT_KEY; for \
+                         emulators put gcs_base_url / disable_oauth in the service-account \
+                         JSON)",
+                        cloud.raw
+                    ))
+                })?;
+            Ok(Arc::new(store))
+        }
+        CloudKind::Azure => {
+            let store = object_store::azure::MicrosoftAzureBuilder::from_env()
+                .with_url(&cloud.raw)
+                .build()
+                .map_err(|e| {
+                    StageError::InvalidData(format!(
+                        "Azure Blob configuration for `{}`: {e} (set \
+                         AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY / \
+                         AZURE_STORAGE_ACCESS_KEY, or service-principal \
+                         AZURE_STORAGE_CLIENT_ID / AZURE_STORAGE_CLIENT_SECRET / \
+                         AZURE_STORAGE_TENANT_ID; for Azurite set AZURE_STORAGE_ENDPOINT \
+                         and AZURE_ALLOW_HTTP=true)",
+                        cloud.raw
+                    ))
+                })?;
+            Ok(Arc::new(store))
+        }
+    }
+}
+
+/// Enumerate cloud work units from a single object listing: key, size, and
+/// last-modified — no per-object round trips. A URL whose final segment
+/// carries a matching extension names one object; otherwise it is a prefix.
+async fn list_cloud_work_units(
+    cloud: &CloudUrl,
     extensions: &[&str],
 ) -> Result<Vec<WorkUnit>, StageError> {
-    use object_store::ObjectStore;
-
-    let (bucket, key) = rest.split_once('/').unwrap_or((rest, ""));
-    if bucket.is_empty() {
-        return Err(StageError::InvalidData(format!(
-            "source URL `{url}` has no bucket"
-        )));
-    }
-    let store = object_store::aws::AmazonS3Builder::from_env()
-        .with_bucket_name(bucket)
-        .build()
-        .map_err(|e| {
-            StageError::InvalidData(format!(
-                "S3 configuration for `{url}`: {e} (set AWS_ACCESS_KEY_ID, \
-                 AWS_SECRET_ACCESS_KEY, AWS_REGION, and optionally AWS_ENDPOINT / \
-                 AWS_ALLOW_HTTP for S3-compatible services)"
-            ))
-        })?;
+    let store = build_object_store(cloud)?;
 
     let matches = |location: &object_store::path::Path| {
         location
@@ -104,13 +280,13 @@ async fn list_s3_work_units(
             .is_some_and(|e| extensions.iter().any(|x| x.eq_ignore_ascii_case(e)))
     };
 
-    let key_path = object_store::path::Path::from(key);
+    let key_path = object_store::path::Path::from(cloud.key.as_str());
     let mut metas = Vec::new();
     if matches(&key_path) {
         let meta = store.head(&key_path).await.map_err(StageError::external)?;
         metas.push(meta);
     } else {
-        let prefix = (!key.is_empty()).then_some(&key_path);
+        let prefix = (!cloud.key.is_empty()).then_some(&key_path);
         let listing = store
             .list_with_delimiter(prefix)
             .await
@@ -121,7 +297,7 @@ async fn list_s3_work_units(
     Ok(metas
         .into_iter()
         .map(|meta| WorkUnit {
-            url: format!("s3://{bucket}/{}", meta.location),
+            url: format!("{}/{}", cloud.list_prefix, meta.location),
             size: meta.size,
             modified_millis: meta.last_modified.timestamp_millis(),
         })
@@ -130,9 +306,9 @@ async fn list_s3_work_units(
 
 /// Streams Arrow batches from Parquet files under a URL.
 ///
-/// Accepts local paths, `file://` URLs, and `s3://` URLs (including
-/// S3-compatible services like MinIO, configured via the standard `AWS_*`
-/// environment). Azure Blob and GCS are tracked in X1.5.
+/// Accepts local paths, `file://` URLs, `s3://`, `gs://`, and Azure Blob
+/// URLs (`az://`, `abfs(s)://`, …), configured via the standard provider
+/// environment variables. Credentials never appear in the pipeline document.
 ///
 /// Execution is DataFusion's streaming scan under a [`FairSpillPool`], so
 /// memory stays bounded regardless of dataset size (validated in spike
@@ -184,46 +360,25 @@ impl ParquetSource {
 /// Register object stores for any remote URLs among `paths`, returning the
 /// paths with local ones normalized (`file://` stripped).
 ///
-/// S3 (and S3-compatible services like MinIO) is configured entirely from
-/// the standard `AWS_*` environment: `AWS_ACCESS_KEY_ID`,
-/// `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` / `AWS_DEFAULT_REGION`,
-/// `AWS_ENDPOINT` (for S3-compatible endpoints), and `AWS_ALLOW_HTTP=true`
-/// for plaintext local endpoints. Credentials never appear in the pipeline
-/// document.
+/// Cloud stores are configured from the standard provider environment:
+/// - S3 / MinIO: `AWS_*`
+/// - GCS: `GOOGLE_SERVICE_ACCOUNT*` / `GOOGLE_SERVICE_ACCOUNT_KEY`
+/// - Azure Blob / Azurite: `AZURE_STORAGE_*` (and `AZURE_ALLOW_HTTP` for
+///   plaintext local endpoints)
+///
+/// Credentials never appear in the pipeline document.
 fn register_remote_stores(
     ctx: &SessionContext,
     paths: Vec<String>,
 ) -> Result<Vec<String>, StageError> {
     let mut normalized = Vec::with_capacity(paths.len());
     for path in paths {
-        if let Some(rest) = path.strip_prefix("s3://") {
-            let bucket = rest.split('/').next().unwrap_or_default();
-            if bucket.is_empty() {
-                return Err(StageError::InvalidData(format!(
-                    "source URL `{path}` has no bucket"
-                )));
-            }
-            let base = url::Url::parse(&format!("s3://{bucket}"))
-                .map_err(|e| StageError::InvalidData(format!("source URL `{path}`: {e}")))?;
-            let store = object_store::aws::AmazonS3Builder::from_env()
-                .with_bucket_name(bucket)
-                .build()
-                .map_err(|e| {
-                    StageError::InvalidData(format!(
-                        "S3 configuration for `{path}`: {e} (set AWS_ACCESS_KEY_ID, \
-                         AWS_SECRET_ACCESS_KEY, AWS_REGION, and optionally AWS_ENDPOINT / \
-                         AWS_ALLOW_HTTP for S3-compatible services)"
-                    ))
-                })?;
-            ctx.register_object_store(&base, Arc::new(store));
+        if let Some(cloud) = CloudUrl::parse(&path)? {
+            let store = build_object_store(&cloud)?;
+            ctx.register_object_store(&cloud.base, store);
             normalized.push(path);
         } else if let Some(local) = path.strip_prefix("file://") {
             normalized.push(local.to_owned());
-        } else if path.contains("://") {
-            return Err(StageError::InvalidData(format!(
-                "unsupported source URL scheme in `{path}`; v1 supports local paths, file://, \
-                 and s3:// (Azure Blob and GCS are tracked in X1.5)"
-            )));
         } else {
             normalized.push(path);
         }
@@ -320,16 +475,18 @@ impl Source for NdjsonSource {
     }
 }
 
-/// Resolve a URL to a local filesystem path (`s3://` is handled before
-/// this is called).
+/// Resolve a URL to a local filesystem path (cloud schemes are handled
+/// before this is called).
 fn local_path(url: &str) -> Result<String, StageError> {
     if let Some(path) = url.strip_prefix("file://") {
         return Ok(path.to_owned());
     }
     if url.contains("://") {
+        // CloudUrl::parse should have claimed supported schemes; anything
+        // else is unsupported.
         return Err(StageError::InvalidData(format!(
             "unsupported source URL scheme in `{url}`; v1 supports local paths, file://, \
-             and s3:// (Azure Blob and GCS are tracked in X1.5)"
+             s3://, gs://, az://, azure://, adl://, abfs://, and abfss://"
         )));
     }
     Ok(url.to_owned())
@@ -459,20 +616,34 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[tokio::test]
-    async fn unsupported_schemes_are_rejected_with_guidance() {
-        let Err(error) = ParquetSource::open("az://container/prefix/", 64 << 20, 128).await else {
-            panic!("expected an error for az:// in v1");
-        };
-        assert!(error.to_string().contains("X1.5"), "{error}");
+    #[test]
+    fn parses_azure_and_gcs_url_shapes() {
+        let gs = CloudUrl::parse("gs://my-bucket/prefix/").unwrap().unwrap();
+        assert_eq!(gs.kind, CloudKind::Gcs);
+        assert_eq!(gs.key, "prefix/");
+        assert_eq!(gs.list_prefix, "gs://my-bucket");
+
+        let az = CloudUrl::parse("az://container/prefix/").unwrap().unwrap();
+        assert_eq!(az.kind, CloudKind::Azure);
+        assert_eq!(az.key, "prefix/");
+        assert_eq!(az.list_prefix, "az://container");
+
+        let abfs = CloudUrl::parse("abfss://fs@acct.dfs.core.windows.net/data/")
+            .unwrap()
+            .unwrap();
+        assert_eq!(abfs.kind, CloudKind::Azure);
+        assert_eq!(abfs.key, "data/");
+        assert_eq!(abfs.list_prefix, "abfss://fs@acct.dfs.core.windows.net");
+
+        assert!(CloudUrl::parse("/tmp/local").unwrap().is_none());
+        let err = CloudUrl::parse("http://example.com/x").unwrap_err();
+        assert!(err.to_string().contains("unsupported"), "{err}");
     }
 
-    #[tokio::test]
-    async fn checkpoint_enumeration_rejects_unsupported_schemes() {
-        let Err(error) = list_work_units("az://container/prefix/", &["parquet"]).await else {
-            panic!("expected an error for az:// enumeration");
-        };
-        assert!(error.to_string().contains("X1.5"), "{error}");
+    #[test]
+    fn unsupported_http_scheme_is_rejected() {
+        let err = CloudUrl::parse("http://example.com/x").unwrap_err();
+        assert!(err.to_string().contains("unsupported"), "{err}");
     }
 
     /// L2 test (ADR 0005): the real S3 code path against MinIO. Guarded by
@@ -522,5 +693,44 @@ mod tests {
             rows += batch.num_rows();
         }
         assert!(rows > 0, "expected rows from {}", units[0].url);
+    }
+
+    /// L2 test (ADR 0005): Azure Blob against Azurite. Guarded by
+    /// `PRAMEN_TEST_AZURE_URL` (e.g. `az://pramen-test/e2e/`) with
+    /// `AZURE_STORAGE_*` (and typically `AZURE_ALLOW_HTTP=true` +
+    /// `AZURE_STORAGE_ENDPOINT` for the emulator); skipped when unset.
+    #[tokio::test]
+    async fn enumerates_work_units_from_azure_emulator() {
+        let Some(url) = pramen_testkit::env::azure_url() else {
+            return;
+        };
+        let units = list_work_units(&url, &["parquet"]).await.unwrap();
+        assert!(!units.is_empty(), "expected work units under {url}");
+        for unit in &units {
+            assert!(
+                unit.url.contains("://"),
+                "cloud URL expected, got {}",
+                unit.url
+            );
+            assert!(unit.size > 0);
+            assert!(unit.modified_millis > 0);
+        }
+    }
+
+    /// L2 test (ADR 0005): GCS against a local emulator (e.g. fake-gcs).
+    /// Guarded by `PRAMEN_TEST_GCS_URL` (e.g. `gs://pramen-test/e2e/`) with
+    /// a service-account JSON that points at the emulator; skipped when unset.
+    #[tokio::test]
+    async fn enumerates_work_units_from_gcs_emulator() {
+        let Some(url) = pramen_testkit::env::gcs_url() else {
+            return;
+        };
+        let units = list_work_units(&url, &["parquet"]).await.unwrap();
+        assert!(!units.is_empty(), "expected work units under {url}");
+        for unit in &units {
+            assert!(unit.url.starts_with("gs://"), "{}", unit.url);
+            assert!(unit.size > 0);
+            assert!(unit.modified_millis > 0);
+        }
     }
 }
