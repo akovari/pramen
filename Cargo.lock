@@ -4202,6 +4202,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-postgres",
  "tracing",
 ]
 
@@ -4214,6 +4215,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "pramen-testkit",
  "schemars",
  "serde",
  "serde_json",
@@ -4221,6 +4223,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-postgres",
  "tokio-util",
  "tracing",
  "tracing-subscriber",

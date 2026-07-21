@@ -123,9 +123,10 @@ Early implementation; no stable public API yet. What runs today:
   optional `runtime.residency` validates declared source locations and model
   regions offline (no live cloud lookups);
 - checkpointed incremental runs (ADR 0006): file-granular work units on a
-  crash-safe append-only store — replaying a finished run loads nothing, a
-  grown directory (or cloud prefix — unit identity from a single `LIST`,
-  MinIO-verified for S3) loads only new files;
+  crash-safe store (`file://…` locally, or `postgres://…` /
+  `postgresql://…` for the shared fleet backend) — replaying a finished
+  run loads nothing, a grown directory (or cloud prefix — unit identity
+  from a single `LIST`, MinIO-verified for S3) loads only new files;
 - `upsert` sink mode: stage + `ON CONFLICT` merge on declared keys, so
   replays are idempotent — the at-least-once contract is pinned by tests
   on both sides (append duplicates, upsert does not);
@@ -133,13 +134,14 @@ Early implementation; no stable public API yet. What runs today:
   stays free) and an always-armed circuit breaker against invalid-output
   spikes;
 - governed semantic transforms run today: `ai.extract` / `ai.classify` /
-  `ai.generate` on the durable SQLite (WAL) inference ledger —
-  content-addressed work keys, result reuse on replay, pre-dispatch token
-  budgets, and strict typed output validation (`ai.generate` requires
-  UTF-8 `maxChars` + `maxOutputTokensPerRecord`) — with three providers:
-  deterministic `mock`, any OpenAI-compatible endpoint (vLLM, Ollama,
-  llama.cpp), and Amazon Bedrock Converse (stub-tested offline per ADR
-  0005); see
+  `ai.generate` on the durable inference ledger (SQLite WAL by default;
+  set `PRAMEN_LEDGER_PATH` to a `postgres://` DSN for the shared fleet
+  backend) — content-addressed work keys, result reuse on replay,
+  pre-dispatch token budgets, and strict typed output validation
+  (`ai.generate` requires UTF-8 `maxChars` + `maxOutputTokensPerRecord`)
+  — with three providers: deterministic `mock`, any OpenAI-compatible
+  endpoint (vLLM, Ollama, llama.cpp), and Amazon Bedrock Converse
+  (stub-tested offline per ADR 0005); see
   [examples/local-tickets-ai-classify.yaml](examples/local-tickets-ai-classify.yaml),
   [examples/local-tickets-ai-generate.yaml](examples/local-tickets-ai-generate.yaml),
   and `pramen ai status`;

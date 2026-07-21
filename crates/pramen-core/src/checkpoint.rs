@@ -15,10 +15,11 @@
 //! wherever the contract is (ADR 0006, the sink's docs). Completed units
 //! are never re-processed.
 //!
-//! [`FileCheckpointStore`] is the v1 backend: an append-only JSONL log with
-//! fsync'd writes, replayed on open, tolerant of a torn final line. The
-//! [`CheckpointStore`] trait is the seam where the Postgres-backed fleet
-//! store (X1.8) slots in later.
+//! [`FileCheckpointStore`] is the local-default backend: an append-only JSONL
+//! log with fsync'd writes, replayed on open, tolerant of a torn final line.
+//! [`PostgresCheckpointStore`] is the shared fleet backend (X1.8): the same
+//! claim/complete contract on a `pramen_checkpoints` table, selected when the
+//! checkpoint URL uses a `postgres://` or `postgresql://` scheme.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -42,6 +43,15 @@ pub enum CheckpointError {
         /// What failed to decode.
         reason: String,
     },
+    /// The shared (Postgres) backend could not be reached or queried.
+    #[error("checkpoint store: {0}")]
+    Backend(String),
+}
+
+impl From<tokio_postgres::Error> for CheckpointError {
+    fn from(error: tokio_postgres::Error) -> Self {
+        Self::Backend(error.to_string())
+    }
 }
 
 /// The identity of one immutable source object.
@@ -102,18 +112,21 @@ enum LogRecord {
 /// A durable store of work-unit claims and completions.
 pub trait CheckpointStore: Send {
     /// Whether a unit has been durably completed by any prior run.
-    fn is_complete(&self, key: &str) -> bool;
+    fn is_complete(&mut self, key: &str) -> bool;
 
     /// Durably record that `run_id` is about to process `unit`.
     ///
     /// Claims are advisory in the single-process v1 runtime (a stale claim
     /// from a crashed run is simply re-claimed); they exist so a later
-    /// coordinator can lease work without a protocol change.
+    /// coordinator can lease work without a protocol change. The Postgres
+    /// backend uses row upserts so concurrent writers cannot corrupt
+    /// completed rows, but it does not yet fence leases — treat multi-worker
+    /// claim races like the file store: at-least-once, not exclusive.
     ///
     /// # Errors
     ///
-    /// Returns [`CheckpointError::Io`] when the record cannot be made
-    /// durable.
+    /// Returns [`CheckpointError::Io`] or [`CheckpointError::Backend`] when
+    /// the record cannot be made durable.
     fn claim(&mut self, unit: &WorkUnit, key: &str, run_id: &str) -> Result<(), CheckpointError>;
 
     /// Durably record that `key` was loaded and committed at the sink.
@@ -121,9 +134,21 @@ pub trait CheckpointStore: Send {
     ///
     /// # Errors
     ///
-    /// Returns [`CheckpointError::Io`] when the record cannot be made
-    /// durable.
+    /// Returns [`CheckpointError::Io`] or [`CheckpointError::Backend`] when
+    /// the record cannot be made durable.
     fn complete(&mut self, key: &str, run_id: &str) -> Result<(), CheckpointError>;
+}
+
+/// Whether `url` selects the shared Postgres checkpoint backend.
+#[must_use]
+pub fn is_postgres_url(url: &str) -> bool {
+    match url.split_once("://") {
+        Some((scheme, _)) => {
+            let scheme = scheme.to_ascii_lowercase();
+            scheme == "postgres" || scheme == "postgresql"
+        }
+        None => false,
+    }
 }
 
 /// The v1 file-backed checkpoint store: `checkpoints.jsonl` inside a
@@ -243,8 +268,179 @@ fn now_millis() -> i64 {
         .unwrap_or_default()
 }
 
+const POSTGRES_CHECKPOINT_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS pramen_checkpoints (
+    key TEXT PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN ('claimed', 'completed')),
+    url TEXT NOT NULL,
+    size BIGINT NOT NULL,
+    modified_millis BIGINT NOT NULL,
+    run_id TEXT NOT NULL,
+    claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ
+);
+";
+
+/// Shared Postgres checkpoint store for fleet deployments (X1.8).
+///
+/// Concurrency: correct for a single writer and safe against lost updates on
+/// completed keys when multiple workers race (completed rows are never
+/// demoted). Claims are not exclusively leased — two workers may claim the
+/// same incomplete key; both may process it (at-least-once). Exclusive
+/// leasing is a later coordinator concern.
+pub struct PostgresCheckpointStore {
+    client: tokio_postgres::Client,
+    handle: tokio::runtime::Handle,
+    /// Retains a runtime when [`Self::open`] created one outside async.
+    _runtime: Option<std::sync::Arc<tokio::runtime::Runtime>>,
+}
+
+impl PostgresCheckpointStore {
+    /// Connect and bootstrap schema using the current Tokio runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CheckpointError::Backend`] when the DSN is unreachable or
+    /// migration fails.
+    pub async fn connect(dsn: &str) -> Result<Self, CheckpointError> {
+        let (client, connection) = tokio_postgres::connect(dsn, tokio_postgres::NoTls).await?;
+        tokio::spawn(async move {
+            if let Err(error) = connection.await {
+                tracing::error!(%error, "postgres checkpoint connection closed");
+            }
+        });
+        client.batch_execute(POSTGRES_CHECKPOINT_SCHEMA).await?;
+        Ok(Self {
+            client,
+            handle: tokio::runtime::Handle::current(),
+            _runtime: None,
+        })
+    }
+
+    /// Connect from a synchronous context (creates a private runtime when
+    /// none is running). Prefer [`Self::connect`] inside `async` code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CheckpointError::Backend`] on connection or migration
+    /// failure, or [`CheckpointError::Io`] when a runtime cannot be built.
+    pub fn open(dsn: &str) -> Result<Self, CheckpointError> {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            return tokio::task::block_in_place(|| handle.block_on(Self::connect(dsn)));
+        }
+        let runtime = std::sync::Arc::new(tokio::runtime::Runtime::new()?);
+        let handle = runtime.handle().clone();
+        let store = handle.block_on(async {
+            let (client, connection) = tokio_postgres::connect(dsn, tokio_postgres::NoTls).await?;
+            handle.spawn(async move {
+                if let Err(error) = connection.await {
+                    tracing::error!(%error, "postgres checkpoint connection closed");
+                }
+            });
+            client.batch_execute(POSTGRES_CHECKPOINT_SCHEMA).await?;
+            Ok::<_, CheckpointError>(client)
+        })?;
+        Ok(Self {
+            client: store,
+            handle,
+            _runtime: Some(runtime),
+        })
+    }
+}
+
+impl CheckpointStore for PostgresCheckpointStore {
+    fn is_complete(&mut self, key: &str) -> bool {
+        let handle = self.handle.clone();
+        let future = async {
+            match self
+                .client
+                .query_opt(
+                    "SELECT 1 FROM pramen_checkpoints WHERE key = $1 AND status = 'completed'",
+                    &[&key],
+                )
+                .await
+            {
+                Ok(row) => row.is_some(),
+                Err(error) => {
+                    tracing::error!(%error, "postgres checkpoint is_complete failed");
+                    false
+                }
+            }
+        };
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        } else {
+            handle.block_on(future)
+        }
+    }
+
+    fn claim(&mut self, unit: &WorkUnit, key: &str, run_id: &str) -> Result<(), CheckpointError> {
+        let url = unit.url.clone();
+        let size = i64::try_from(unit.size).unwrap_or(i64::MAX);
+        let modified = unit.modified_millis;
+        let key = key.to_owned();
+        let run_id = run_id.to_owned();
+        let handle = self.handle.clone();
+        let future = async {
+            self.client
+                .execute(
+                    "INSERT INTO pramen_checkpoints
+                        (key, status, url, size, modified_millis, run_id)
+                     VALUES ($1, 'claimed', $2, $3, $4, $5)
+                     ON CONFLICT (key) DO UPDATE SET
+                        url = EXCLUDED.url,
+                        size = EXCLUDED.size,
+                        modified_millis = EXCLUDED.modified_millis,
+                        run_id = EXCLUDED.run_id,
+                        claimed_at = now()
+                     WHERE pramen_checkpoints.status <> 'completed'",
+                    &[&key, &url, &size, &modified, &run_id],
+                )
+                .await?;
+            Ok(())
+        };
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        } else {
+            handle.block_on(future)
+        }
+    }
+
+    fn complete(&mut self, key: &str, run_id: &str) -> Result<(), CheckpointError> {
+        let key = key.to_owned();
+        let run_id = run_id.to_owned();
+        let handle = self.handle.clone();
+        // Idempotent: a completed row keeps its first completed_at and
+        // run_id; claimed rows are promoted. Never demotes completed.
+        let future = async {
+            self.client
+                .execute(
+                    "INSERT INTO pramen_checkpoints
+                        (key, status, url, size, modified_millis, run_id, completed_at)
+                     VALUES ($1, 'completed', '', 0, 0, $2, now())
+                     ON CONFLICT (key) DO UPDATE SET
+                        status = 'completed',
+                        completed_at = COALESCE(pramen_checkpoints.completed_at, now()),
+                        run_id = CASE
+                            WHEN pramen_checkpoints.status = 'completed'
+                                THEN pramen_checkpoints.run_id
+                            ELSE EXCLUDED.run_id
+                        END",
+                    &[&key, &run_id],
+                )
+                .await?;
+            Ok(())
+        };
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        } else {
+            handle.block_on(future)
+        }
+    }
+}
+
 impl CheckpointStore for FileCheckpointStore {
-    fn is_complete(&self, key: &str) -> bool {
+    fn is_complete(&mut self, key: &str) -> bool {
         self.completed.contains(key)
     }
 
@@ -326,7 +522,7 @@ mod tests {
             // b stays claimed: simulates a crash before completion.
         }
 
-        let store = FileCheckpointStore::open(&dir).unwrap();
+        let mut store = FileCheckpointStore::open(&dir).unwrap();
         assert!(store.is_complete(&ka), "completion is durable");
         assert!(!store.is_complete(&kb), "unfinished work is not completed");
         assert_eq!(
@@ -377,7 +573,7 @@ mod tests {
             .unwrap();
         drop(file);
 
-        let store = FileCheckpointStore::open(&dir).unwrap();
+        let mut store = FileCheckpointStore::open(&dir).unwrap();
         assert!(store.is_complete(&ka), "intact records survive");
         assert_eq!(store.completed_count(), 1);
 
@@ -403,5 +599,58 @@ mod tests {
         };
         assert!(matches!(error, CheckpointError::Corrupt { line: 1, .. }));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn postgres_url_detection() {
+        assert!(is_postgres_url("postgres://localhost/db"));
+        assert!(is_postgres_url("postgresql://user@host/db"));
+        assert!(is_postgres_url("POSTGRES://localhost/db"));
+        assert!(!is_postgres_url("file:///var/lib/pramen/checkpoints"));
+        assert!(!is_postgres_url("/var/lib/pramen/checkpoints"));
+    }
+
+    /// L2: claim/complete against real PostgreSQL when
+    /// `PRAMEN_TEST_POSTGRES_DSN` is set (ADR 0005).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn postgres_claim_complete_lifecycle() {
+        let Some(dsn) = pramen_testkit::env::postgres_dsn() else {
+            return;
+        };
+        let (setup, connection) = tokio_postgres::connect(&dsn, tokio_postgres::NoTls)
+            .await
+            .unwrap();
+        tokio::spawn(connection);
+        setup
+            .batch_execute("DROP TABLE IF EXISTS pramen_checkpoints")
+            .await
+            .unwrap();
+
+        let a = unit("/data/a.parquet");
+        let ka = a.key("pipe");
+        {
+            let mut store = PostgresCheckpointStore::connect(&dsn).await.unwrap();
+            assert!(!store.is_complete(&ka));
+            store.claim(&a, &ka, "run-1").unwrap();
+            store.complete(&ka, "run-1").unwrap();
+            store.complete(&ka, "run-2").unwrap();
+            assert!(store.is_complete(&ka));
+        }
+
+        let mut reopened = PostgresCheckpointStore::connect(&dsn).await.unwrap();
+        assert!(reopened.is_complete(&ka), "completion survives reconnect");
+
+        // A re-claim must not demote a completed unit.
+        reopened.claim(&a, &ka, "run-3").unwrap();
+        assert!(reopened.is_complete(&ka));
+        let status: String = setup
+            .query_one(
+                "SELECT status FROM pramen_checkpoints WHERE key = $1",
+                &[&ka],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(status, "completed");
     }
 }

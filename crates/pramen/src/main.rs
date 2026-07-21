@@ -100,9 +100,10 @@ enum Command {
 enum AiCommand {
     /// Show the inference ledger's work-item counts by state.
     Status {
-        /// Ledger path (defaults to $PRAMEN_LEDGER_PATH or .pramen/ledger.sqlite).
+        /// Ledger location: SQLite path or `postgres://` DSN
+        /// (defaults to $PRAMEN_LEDGER_PATH or .pramen/ledger.sqlite).
         #[arg(long)]
-        ledger: Option<PathBuf>,
+        ledger: Option<String>,
     },
     /// Evaluate a model on a golden corpus; write a timestamped report.
     Evaluate {
@@ -138,9 +139,10 @@ enum AiCommand {
     Review {
         #[command(subcommand)]
         command: ReviewCommand,
-        /// Ledger path (defaults to $PRAMEN_LEDGER_PATH or .pramen/ledger.sqlite).
+        /// Ledger location: SQLite path or `postgres://` DSN
+        /// (defaults to $PRAMEN_LEDGER_PATH or .pramen/ledger.sqlite).
         #[arg(long, global = true)]
-        ledger: Option<PathBuf>,
+        ledger: Option<String>,
     },
 }
 
@@ -272,12 +274,12 @@ fn main() -> ExitCode {
         Command::Ai {
             command: AiCommand::Review { command, ledger },
         } => {
-            let path = ledger.unwrap_or_else(run::ledger_path);
+            let location = ledger.unwrap_or_else(run::ledger_location);
             let result = match command {
-                ReviewCommand::List => review::list(&path),
-                ReviewCommand::Export => review::export(&path),
-                ReviewCommand::Accept { key, output } => review::accept(&path, &key, &output),
-                ReviewCommand::Reject { key } => review::reject(&path, &key),
+                ReviewCommand::List => review::list(&location),
+                ReviewCommand::Export => review::export(&location),
+                ReviewCommand::Accept { key, output } => review::accept(&location, &key, &output),
+                ReviewCommand::Reject { key } => review::reject(&location, &key),
             };
             match result {
                 Ok(()) => ExitCode::SUCCESS,
@@ -305,16 +307,19 @@ fn main() -> ExitCode {
     }
 }
 
-fn ai_status(ledger: Option<PathBuf>) -> ExitCode {
-    let path = ledger.unwrap_or_else(run::ledger_path);
-    if !path.exists() {
-        println!("no ledger at {} (nothing recorded yet)", path.display());
+fn ai_status(ledger: Option<String>) -> ExitCode {
+    let location = ledger.unwrap_or_else(run::ledger_location);
+    if !pramen_core::checkpoint::is_postgres_url(&location)
+        && !std::path::Path::new(&location).exists()
+    {
+        println!("no ledger at {location} (nothing recorded yet)");
         return ExitCode::SUCCESS;
     }
-    match pramen_ai::ledger::Ledger::open(&path).and_then(|l| Ok((l.counts()?, l.review_counts()?)))
+    match pramen_ai::ledger::Ledger::open_location(&location)
+        .and_then(|l| Ok((l.counts()?, l.review_counts()?)))
     {
         Ok(((pending, submitted, completed, failed), (in_review, accepted, rejected))) => {
-            println!("ledger: {}", path.display());
+            println!("ledger: {location}");
             println!("  pending:   {pending}");
             println!("  submitted: {submitted}");
             println!("  completed: {completed}");
@@ -323,7 +328,7 @@ fn ai_status(ledger: Option<PathBuf>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("pramen: cannot read ledger {}: {error}", path.display());
+            eprintln!("pramen: cannot read ledger {location}: {error}");
             ExitCode::FAILURE
         }
     }

@@ -3,8 +3,9 @@
 //! This crate turns language-model calls into contract-bound operations:
 //!
 //! - [`workkey`]: the content-addressed identity of a unit of semantic work;
-//! - [`ledger`]: the durable SQLite (WAL) inference ledger — completed work
-//!   is recorded before use and reused on replay, never re-billed;
+//! - [`ledger`]: the durable inference ledger (SQLite WAL locally, Postgres
+//!   for fleets) — completed work is recorded before use and reused on
+//!   replay, never re-billed;
 //! - [`provider`]: the provider abstraction with mock, OpenAI-compatible,
 //!   and Bedrock Converse adapters, plus the provider-batch surface;
 //! - [`schema`]: JSON Schema generation from declared output fields and

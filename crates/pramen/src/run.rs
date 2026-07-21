@@ -3,13 +3,14 @@
 use pramen_ai::ledger::Ledger;
 use pramen_ai::operator::SemanticTransform;
 use pramen_ai::provider::{BedrockProvider, MockProvider, OpenAiCompatProvider, Provider};
-use pramen_core::checkpoint::{CheckpointStore, FileCheckpointStore, WorkUnit};
+use pramen_core::checkpoint::{
+    CheckpointStore, FileCheckpointStore, PostgresCheckpointStore, WorkUnit, is_postgres_url,
+};
 use pramen_core::observe::RunMetrics;
 use pramen_core::runtime::{self, RunOptions, Sink, Source, Transform};
 use pramen_core::spec::{
     AiTransform, FormatSpec, ModelSpec, PipelineSpec, SinkSpec, SourceSpec, TransformSpec,
 };
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -113,12 +114,12 @@ async fn execute_async(
     if smoke.is_some() && runtime_spec.checkpoint.is_some() {
         tracing::info!("smoke run: checkpoint store is neither consulted nor updated");
     }
-    let mut checkpoint: Option<(FileCheckpointStore, Vec<String>)> = None;
+    let mut checkpoint: Option<(Box<dyn CheckpointStore>, Vec<String>)> = None;
     let planned_paths = match &runtime_spec.checkpoint {
         None => None,
         Some(_) if smoke.is_some() => None,
         Some(config) => {
-            let mut store = open_checkpoint_store(&config.url)?;
+            let mut store = open_checkpoint_store(&config.url).await?;
             let units = enumerate_units(spec).await?;
             let total = units.len();
             let pipeline = &spec.metadata.name;
@@ -264,17 +265,27 @@ impl Source for RowCapSource {
     }
 }
 
-/// Open the file checkpoint store configured at `url` (a local directory,
-/// optionally as a `file://` URL).
-fn open_checkpoint_store(url: &str) -> Result<FileCheckpointStore, String> {
+/// Open the checkpoint store configured at `url`.
+///
+/// - `file://…` or a bare filesystem path → [`FileCheckpointStore`]
+/// - `postgres://…` / `postgresql://…` → [`PostgresCheckpointStore`] (X1.8)
+async fn open_checkpoint_store(url: &str) -> Result<Box<dyn CheckpointStore>, String> {
+    if is_postgres_url(url) {
+        let store = PostgresCheckpointStore::connect(url)
+            .await
+            .map_err(|error| error.to_string())?;
+        return Ok(Box::new(store));
+    }
     let path = url.strip_prefix("file://").unwrap_or(url);
     if path.contains("://") {
         return Err(format!(
-            "checkpoint: unsupported URL scheme in `{url}`; the v1 checkpoint store is a local \
-             directory (shared backends are tracked in X1.8)"
+            "checkpoint: unsupported URL scheme in `{url}`; use a local directory \
+             (`file://…` or a path) or a Postgres DSN (`postgres://…` / `postgresql://…`)"
         ));
     }
-    FileCheckpointStore::open(std::path::Path::new(path)).map_err(|error| error.to_string())
+    FileCheckpointStore::open(std::path::Path::new(path))
+        .map(|store| Box::new(store) as Box<dyn CheckpointStore>)
+        .map_err(|error| error.to_string())
 }
 
 /// Enumerate the source into checkpointable work units (local paths,
@@ -375,8 +386,8 @@ async fn plan_semantic(
         )
     })?;
     let provider = plan_provider(&ai.id, model).await?;
-    let ledger =
-        Ledger::open(&ledger_path()).map_err(|error| format!("transform `{}`: {error}", ai.id))?;
+    let ledger = Ledger::open_location(&ledger_location())
+        .map_err(|error| format!("transform `{}`: {error}", ai.id))?;
     let mut ai = ai.clone();
     if smoke {
         let budget = ai.budget.get_or_insert_with(Default::default);
@@ -441,9 +452,11 @@ pub(crate) async fn plan_provider(
 
 /// The inference ledger location: `PRAMEN_LEDGER_PATH` or
 /// `.pramen/ledger.sqlite` under the working directory.
-pub fn ledger_path() -> PathBuf {
-    std::env::var(LEDGER_PATH_ENV)
-        .map_or_else(|_| PathBuf::from(DEFAULT_LEDGER_PATH), PathBuf::from)
+///
+/// A `postgres://` or `postgresql://` value selects the shared Postgres
+/// ledger (X1.8); anything else is a SQLite filesystem path.
+pub fn ledger_location() -> String {
+    std::env::var(LEDGER_PATH_ENV).unwrap_or_else(|_| DEFAULT_LEDGER_PATH.to_owned())
 }
 
 async fn plan_sink(spec: &PipelineSpec) -> Result<Box<dyn Sink>, String> {

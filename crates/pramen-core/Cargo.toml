@@ -20,12 +20,14 @@ serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync", "rt", "macros", "time"] }
+tokio = { workspace = true, features = ["sync", "rt", "macros", "time", "net"] }
+tokio-postgres = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"] }
 
 [dev-dependencies]
+pramen-testkit = { path = "../pramen-testkit" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [lints]

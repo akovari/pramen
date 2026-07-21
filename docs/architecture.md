@@ -470,6 +470,7 @@ spec:
     maxInflightBytes: 268435456
     checkpoint:
       url: file:///var/lib/pramen/checkpoints/
+      # or postgres://… / postgresql://… for the shared fleet store (X1.8)
 ```
 
 The first schema should support a linear pipeline while the internal plan is a
@@ -580,9 +581,11 @@ provider request identifiers. An ambiguous timeout may still create duplicate
 provider billing where the provider offers no idempotency or lookup mechanism;
 Pramen must report this rather than claim exactly-once inference.
 
-The first local ledger can use SQLite in WAL mode, but its interface must permit
-a shared backend later. It stores only the selected AI inputs and outputs, not
-entire source batches, unless pipeline policy explicitly requests that.
+The local default ledger uses SQLite in WAL mode; the shared fleet backend is
+Postgres (`PRAMEN_LEDGER_PATH=postgres://…`, tables `pramen_work_items` /
+`pramen_review_queue`). Both implement the same `LedgerStore` seam. The ledger
+stores only the selected AI inputs and outputs, not entire source batches,
+unless pipeline policy explicitly requests that.
 
 ### Provider abstraction
 

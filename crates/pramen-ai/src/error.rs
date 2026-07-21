@@ -40,7 +40,7 @@ impl std::fmt::Display for ProviderFault {
 pub enum AiError {
     /// The inference ledger could not be read or written.
     #[error("ledger: {0}")]
-    Ledger(#[from] rusqlite::Error),
+    Ledger(String),
     /// A provider call failed; `fault` carries the typed classification.
     #[error("provider `{provider}` ({fault}): {message}")]
     Provider {
@@ -63,4 +63,16 @@ pub enum AiError {
     /// Input data could not be converted for the model.
     #[error("input: {0}")]
     Input(String),
+}
+
+impl From<rusqlite::Error> for AiError {
+    fn from(error: rusqlite::Error) -> Self {
+        Self::Ledger(error.to_string())
+    }
+}
+
+impl From<tokio_postgres::Error> for AiError {
+    fn from(error: tokio_postgres::Error) -> Self {
+        Self::Ledger(error.to_string())
+    }
 }

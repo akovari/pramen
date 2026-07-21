@@ -3,6 +3,7 @@
 
 use pramen_ai::ledger::Ledger;
 use pramen_ai::review::ReviewItem;
+use pramen_core::checkpoint::is_postgres_url;
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -30,8 +31,8 @@ fn resolve_key(items: &[ReviewItem], prefix: &str) -> Result<String, String> {
 /// # Errors
 ///
 /// Returns a message when the ledger cannot be read.
-pub fn list(ledger_path: &Path) -> Result<(), String> {
-    let ledger = open(ledger_path)?;
+pub fn list(ledger_location: &str) -> Result<(), String> {
+    let ledger = open(ledger_location)?;
     let items = ledger.pending_reviews().map_err(|e| e.to_string())?;
     let (pending, accepted, rejected) = ledger.review_counts().map_err(|e| e.to_string())?;
     if items.is_empty() {
@@ -67,8 +68,8 @@ pub fn list(ledger_path: &Path) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns a message when the ledger cannot be read.
-pub fn export(ledger_path: &Path) -> Result<(), String> {
-    let ledger = open(ledger_path)?;
+pub fn export(ledger_location: &str) -> Result<(), String> {
+    let ledger = open(ledger_location)?;
     for item in ledger.pending_reviews().map_err(|e| e.to_string())? {
         let line = json!({
             "workKey": item.work_key,
@@ -91,10 +92,10 @@ pub fn export(ledger_path: &Path) -> Result<(), String> {
 ///
 /// Returns a message when the key is unknown/ambiguous, the correction
 /// is not valid JSON, or it violates the declared schema.
-pub fn accept(ledger_path: &Path, key_prefix: &str, output: &str) -> Result<(), String> {
+pub fn accept(ledger_location: &str, key_prefix: &str, output: &str) -> Result<(), String> {
     let corrected: Value =
         serde_json::from_str(output).map_err(|e| format!("--output is not valid JSON: {e}"))?;
-    let ledger = open(ledger_path)?;
+    let ledger = open(ledger_location)?;
     let items = ledger.pending_reviews().map_err(|e| e.to_string())?;
     let key = resolve_key(&items, key_prefix)?;
     ledger
@@ -112,8 +113,8 @@ pub fn accept(ledger_path: &Path, key_prefix: &str, output: &str) -> Result<(), 
 /// # Errors
 ///
 /// Returns a message when the key is unknown or ambiguous.
-pub fn reject(ledger_path: &Path, key_prefix: &str) -> Result<(), String> {
-    let ledger = open(ledger_path)?;
+pub fn reject(ledger_location: &str, key_prefix: &str) -> Result<(), String> {
+    let ledger = open(ledger_location)?;
     let items = ledger.pending_reviews().map_err(|e| e.to_string())?;
     let key = resolve_key(&items, key_prefix)?;
     ledger.reject_review(&key).map_err(|e| e.to_string())?;
@@ -121,14 +122,11 @@ pub fn reject(ledger_path: &Path, key_prefix: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn open(path: &Path) -> Result<Ledger, String> {
-    if !path.exists() {
-        return Err(format!(
-            "no ledger at {} (nothing recorded yet)",
-            path.display()
-        ));
+fn open(location: &str) -> Result<Ledger, String> {
+    if !is_postgres_url(location) && !Path::new(location).exists() {
+        return Err(format!("no ledger at {location} (nothing recorded yet)"));
     }
-    Ledger::open(path).map_err(|e| e.to_string())
+    Ledger::open_location(location).map_err(|e| e.to_string())
 }
 
 fn compact(value: &Value, max: usize) -> String {
