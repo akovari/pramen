@@ -478,6 +478,9 @@ DAG. Fan-out and fan-in can then be added without replacing the runtime. A
 `type: wasm` transform referencing an OCI-distributed component becomes valid
 at the extensibility milestone without changing this schema's shape.
 
+Fan-out (optional `from` edges and `spec.sinks`) shipped in E1.3 under
+ADR 0007; fan-in remains rejected in v1alpha1.
+
 This file is also the entire onboarding surface: a new user writes a source,
 optionally one SQL transform, one `ai.extract` block, and a sink. No SDK,
 toolchain, or service deployment is required to be productive.
