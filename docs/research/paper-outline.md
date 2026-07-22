@@ -32,7 +32,7 @@ restart-safe LLM enrichment as a systems problem.*
 | 3. System overview | architecture §3–11 (lean binary, stages, ledger, sinks) | Ready to draft |
 | 4. RQ1 Dispatch policy | `e2-1-dispatch-policy.md`, `e2-1-dispatch-frontier.md` | Offline model + mock frontier done; live frontier → S2.2 |
 | 5. RQ2 Memoization | `rq2-memoization.md`, `rq2-memoization-metrics.json` | Offline measured; live Bedrock confirm → S2.2 |
-| 6. RQ3 Comparison | scoreboard + `compare/` harnesses | Offline legs measured; competitor AI → credentials (E2.3) |
+| 6. RQ3 Comparison | scoreboard + `compare/` harnesses | Offline legs measured; Redpanda+DocETL local Ollama measured (ADR 0009); warehouse AI deferred |
 | 7. Implementation notes | connector matrix, COPY spike, WASM spike reports | Ready |
 | 8. Related work | architecture §2 families + §19 sources | Ready |
 | 9. Limitations | at-least-once window, append-only Flight SQL, no ADBC yet | Ready |

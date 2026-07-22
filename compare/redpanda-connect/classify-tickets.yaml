@@ -1,7 +1,15 @@
-# Scaffold: Redpanda Connect pipeline roughly comparable to
-# examples/local-tickets-ai-classify.yaml. Not executed in CI.
+# Scaffold: Redpanda Connect + local Ollama (ADR 0009).
+# Not executed in CI. Requires Redpanda Connect CLI and a running Ollama.
 #
-# Replace credential placeholders before COMPARE_REDPANDA=1 runs.
+# Note: the branded `openai_chat_completion` processor is Enterprise-licensed
+# in Connect 4.53. This harness uses the OSS `http` processor against Ollama's
+# OpenAI-compatible API so the measured leg stays free (ADR 0009).
+#
+#   ollama pull llama3.2:3b
+#   mkdir -p compare/redpanda-connect/out compare/redpanda-connect/fixtures
+#   export COMPARE_REDPANDA=1
+#   redpanda-connect run compare/redpanda-connect/classify-tickets.yaml
+#
 # Docs: https://docs.redpanda.com/redpanda-connect/
 
 input:
@@ -11,13 +19,36 @@ input:
       lines: {}
 
 pipeline:
+  # Keep concurrency at 1 so a modest local Ollama is not overrun.
+  threads: 1
   processors:
-    - aws_bedrock_chat:
-        model: anthropic.claude-3-haiku-20240307-v1:0
-        region: eu-central-1
-        prompt: |
-          Classify the support ticket into a category and estimate a
-          confidence score between 0 and 1. Ticket: ${! content() }
+    - mapping: |
+        let ticket = content().parse_json()
+        meta id = $ticket.id
+        meta description = $ticket.description
+        root = {
+          "model": "llama3.2:3b",
+          "stream": false,
+          "messages": [ {
+            "role": "user",
+            "content": """Classify the support ticket into a category and estimate a confidence score between 0 and 1. Reply with one JSON object only: {"category":"...","confidence":0.0}. Ticket: """ + $ticket.description
+          } ]
+        }
+    - http:
+        url: http://127.0.0.1:11434/v1/chat/completions
+        verb: POST
+        timeout: 120s
+        retries: 2
+        headers:
+          Content-Type: application/json
+          Authorization: "Bearer ollama"
+    - mapping: |
+        let resp = content().parse_json()
+        root = {
+          "id": meta("id"),
+          "model": "llama3.2:3b",
+          "response": $resp.choices.index(0).message.content
+        }
 
 output:
   file:

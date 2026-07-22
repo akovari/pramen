@@ -80,7 +80,9 @@ Everything runs through mise; CI runs the same tasks.
   fleet checkpoint store, `PRAMEN_WASM_OCI_ALLOWLIST` merges with
   `runtime.wasmOciAllowlist` for digest-pinned OCI WASM pulls (fail closed
   when both are empty), `PRAMEN_OPENAI_API_KEY` supplies the optional
-  key for `openai-compat` models, and `PRAMEN_FLIGHT_SQL_TOKEN` supplies the
+  key for `openai-compat` models (local Ollama live acceptance uses
+  `http://127.0.0.1:11434/v1` + `llama3.2:3b` per ADR 0009; key may be
+  unset), and `PRAMEN_FLIGHT_SQL_TOKEN` supplies the
   optional Bearer token for `type: flightSql` sinks (unset/empty = no auth).
 - Conventional commits.
 

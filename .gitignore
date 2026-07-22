@@ -9,3 +9,6 @@ mise.local.toml
 /spikes/**/target
 /examples/external-wasm-guest/guest/target
 .worktrees/
+# Competitor harness run outputs (regenerate with COMPARE_* + Ollama)
+/compare/redpanda-connect/out/
+/compare/docetl/out/

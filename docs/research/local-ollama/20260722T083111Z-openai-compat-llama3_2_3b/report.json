@@ -1,0 +1,39 @@
+{
+  "corpus": "support-tickets",
+  "version": 1,
+  "provider": "openai-compat",
+  "model": "llama3.2:3b",
+  "items": 25,
+  "schemaValid": 25,
+  "fields": [
+    {
+      "field": "category",
+      "weight": 3.0,
+      "accuracy": 0.76,
+      "macroF1": 0.754029304029304
+    },
+    {
+      "field": "priority",
+      "weight": 2.0,
+      "accuracy": 0.4,
+      "macroF1": 0.3633276740237691
+    },
+    {
+      "field": "product",
+      "weight": 1.0,
+      "accuracy": 0.64,
+      "macroF1": 0.7
+    },
+    {
+      "field": "requires_review",
+      "weight": 1.0,
+      "accuracy": 0.4
+    }
+  ],
+  "weightedScore": 0.5885714285714286,
+  "inputTokens": 4793,
+  "outputTokens": 478,
+  "latencyP50Ms": 3297.70415,
+  "latencyP95Ms": 3447.9369,
+  "costUsd": 0.0
+}

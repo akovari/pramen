@@ -11,22 +11,26 @@ the support-ticket golden corpus against
 
 ## Status
 
-`harness_ready` — pipeline scaffold only.
+`measured` (local Ollama, ADR 0009) —
+[2026-07-22 report](../../docs/benchmarks/2026-07-22-local-ollama-competitors.md).
+Use `openai/llama3.2:3b` + `OPENAI_API_BASE=http://127.0.0.1:11434/v1` and
+`output.mode: structured_output` (default tool-calling fails on this small
+local model).
 
-## Run (manual)
+## Run (manual / local)
 
 ```bash
 export COMPARE_DOCETL=1
-# Install DocETL per upstream docs, then:
-docetl run compare/docetl/extract-tickets.yaml
+export OPENAI_API_KEY=ollama
+export OPENAI_API_BASE=http://127.0.0.1:11434/v1
+# uv tool install docetl
+docetl run compare/docetl/extract-tickets.yaml --max-threads 1
 ```
 
-Publish `docs/benchmarks/YYYY-MM-DD-docetl-extract.md` (versions, prompt,
-schema, schema-valid rate, tokens/cost, wall time), update the scoreboard
-JSON to `measured`, then `mise run compare-scoreboard`.
+Fixture: `corpora/support-tickets/tickets.json` (first 25 golden items).
 
 ## Fairness rules
 
-- Same labelled subset and field schema as Pramen `ai.extract` /
-  `ai.classify` eval.
-- Report both quality (weighted score / F1) and cost per accepted row.
+- Same labelled subset as Pramen `ai evaluate` when scoring quality.
+- Report both completion rate / wall time and (when scored) weighted
+  quality; local runs are $0 under ADR 0009.

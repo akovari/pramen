@@ -1,19 +1,33 @@
-# Scaffold DocETL pipeline — not executed in CI.
-# Align prompts/schema with corpora/ support-ticket golden set before runs.
+# DocETL pipeline against local Ollama (ADR 0009). Not executed in CI.
+# Install DocETL per upstream, ensure Ollama is up with llama3.2:3b, then:
+#   export COMPARE_DOCETL=1
+#   export OPENAI_API_KEY=ollama
+#   export OPENAI_API_BASE=http://127.0.0.1:11434/v1
+#   docetl run compare/docetl/extract-tickets.yaml
+#
+# Fixture: corpora/support-tickets/tickets.json (first 25 golden items).
+# Note: use openai/* + OPENAI_API_BASE (OpenAI-compat). Native litellm
+# ollama/* hit 404s against this Ollama; tool-calling mode fails on
+# llama3.2:3b — prefer output.mode: structured_output.
+
 datasets:
   tickets:
     type: file
-    path: ../../corpora/support-tickets/tickets.jsonl
+    path: ../../corpora/support-tickets/tickets.json
 
-default_model: gpt-4o-mini
+default_model: openai/llama3.2:3b
+default_lm_api_base: http://127.0.0.1:11434/v1
+bypass_cache: true
 
 operations:
   - name: classify
     type: map
+    timeout: 120
     prompt: |
       Classify each support ticket into category and confidence in [0,1].
-      Ticket: {{ input.description }}
+      Reply with JSON only. Ticket: {{ input.description }}
     output:
+      mode: structured_output
       schema:
         category: str
         confidence: float
@@ -23,3 +37,6 @@ pipeline:
     - name: enrich
       input: tickets
       operations: [classify]
+  output:
+    type: file
+    path: ./out/classified.json

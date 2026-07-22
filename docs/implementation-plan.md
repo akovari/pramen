@@ -15,21 +15,21 @@ snapshot orients a reader without leaving the file.
 | --- | --- | --- |
 | 1 | **E2.5 outline / prose** (venue TBD) | Venue-agnostic outline in `docs/research/paper-outline.md`; full draft waits on venue ADR |
 | 2 | **E1.1** ADBC (needs ADR: first warehouse) | Blocked on warehouse choice |
-| 3 | **E2.3** measured competitor legs | Needs budget/credentials |
-| — | Cloud-blocked | S1.1 live, S2.1 live, S2.2 frontier, P2.1 |
+| — | Paid-only / not planned (ADR 0009) | S1.1 Bedrock live, S2.1 live Bedrock batch, P2.1 AWS 1M; E2.3 warehouse AI SQL |
 
-Just completed: **E1.4** connector inspect + support matrix, **E1.2** Flight
-SQL (ADR 0008), **E1.3** fan-out (ADR 0007), **E2.4** reproducibility.
-**E2.5** venue not selected yet — offline outline only.
+Just completed: **ADR 0009** local Ollama live acceptance; **S2.2** local
+frontier substitute; **E2.3** Redpanda Connect + DocETL measured on Ollama
+(warehouse AI still deferred). Earlier: **E1.4**, **E1.2**, **E1.3**,
+**E2.4**. **E2.5** venue not selected yet — offline outline only.
 
 | Area | State |
 | --- | --- |
 | Milestone T | T1.1–T1.7 done. T1.7: Criterion benches + `scripts/perf-gate.sh`, a merge-base-vs-HEAD regression gate failing the Perf workflow when the lower 95% CI bound of the change exceeds +5% on designated benches. T1.6: layered strategy per ADR 0005, with the shared fixtures extracted into the dev-only `pramen-testkit` crate (L1 HTTP protocol stubs: one-shot raw/JSON + a routing multi-request server with request capture; uniform L2 env guards for `PRAMEN_TEST_POSTGRES_DSN`/`PRAMEN_TEST_S3_URL`), and a CI job running the env-guarded L2 suite against a PostgreSQL service container. |
-| Phase 0 spikes | S1.1 offline legs done (ledger, crash recovery, protocol stubs; live Bedrock leg awaits credentials). S1.2 done: peak RSS flat (~184 MiB) while input doubles, ~3M rows/s. S1.3 done: binary COPY at 3.1x the `psql \copy` baseline, ADR 0001 confirmed. S1.4 done: WIT component round-trips Arrow IPC at ~43 ns/row (8k-row batches, ~2% of the load path), memory/fuel/deadline limits trap deterministically, fuel exactly reproducible — the Phase 2 ABI is viable. S2.1 and S2.2's cloud legs await credentials. |
+| Phase 0 spikes | S1.1 offline legs done (ledger, crash recovery, protocol stubs). Live Bedrock leg is paid-only under ADR 0009; local Ollama openai-compat substitute measured in `docs/research/local-ollama-frontier.md`. S1.2 done: peak RSS flat (~184 MiB) while input doubles, ~3M rows/s. S1.3 done: binary COPY at 3.1x the `psql \copy` baseline, ADR 0001 confirmed. S1.4 done: WIT component round-trips Arrow IPC at ~43 ns/row (8k-row batches, ~2% of the load path), memory/fuel/deadline limits trap deterministically, fuel exactly reproducible — the Phase 2 ABI is viable. S2.1 paid-only (ADR 0009). **S2.2** local frontier substitute done (Ollama `llama3.2:3b`); Bedrock/vLLM hosted frontier remains paid-only. |
 | Group F | F1, F2, F3 done (spec + validation + JSON Schema artifact; bounded-channel runner with commit-safe shutdown; log formats + metrics registry). F3 completed 2026-07-12: the JSONL event envelope is pinned by a snapshot test, and `run --otlp-endpoint` (or `PRAMEN_OTLP_ENDPOINT`) pushes the final run metrics to an OTLP collector over HTTP/protobuf — verified against a local collector stub. |
 | Group P1 | Three runnable verticals merged. Deterministic: `pramen run` executes Parquet/NDJSON → SQL → Postgres end to end, from local paths or `s3://` (MinIO-verified, 200k rows). Governed AI: `ai.extract`/`ai.classify` on the production SQLite ledger with pre-dispatch budgets, strict output validation, and `onInvalid` policies — verified end to end with full ledger reuse on replay. Checkpointed: file-granular work units on a crash-safe JSONL store (ADR 0006) — replay loads nothing, a grown directory loads only new files (verified end to end). In: P1.1 (local + S3 sources, including checkpointed S3 enumeration — unit identity from a single `LIST`, MinIO-verified incremental runs), P1.2 (NDJSON), P1.3 (checkpoint store + claim/complete), P1.4 (append + upsert COPY sink: stage + ON CONFLICT merge, idempotent replays, L2-tested), P1.5 (provider trait + capabilities), P1.6 (ledger + pinned canonicalization), P1.7 (Bedrock Converse adapter, L1 stub-tested; live acceptance pending credentials), P1.9 (OpenAI-compatible adapter), P1.10 (schema generation + validation), P1.11 (per-record budgets, output caps, `maxRunTokens` run ceiling, always-armed consecutive-invalid circuit breaker), P1.12 (sequential operator), P1.13 (per-batch SQL), P1.14 (delivery contract pinned by L2 tests: append duplicates on replay, upsert does not; crash-window e2e verified), P1.15 (validate/explain/run + `ai status`), P1.8 core (provider-batch operator: buffer, submit, poll, join; job ids durably recorded per item before awaiting; crash-after-submit reconciles by job and item id with zero re-billing, pinned by tests against the batch-capable mock — Bedrock/OpenAI batch adapters remain), P1.17 + S2.2 harness (`ai evaluate` over the versioned 520-item golden support-ticket corpus with weighted rubrics — schema-valid rate, per-field accuracy, macro-F1, weighted score, tokens/cost, latency percentiles, timestamped diffable results; the frontier table over real Bedrock/vLLM models remains), P1.16 (`run --smoke`: row cap, clamped semantic token ceiling, checkpointing bypassed; measured seconds on the example pipeline at zero cost), P1.18 (quickstart scripted in `scripts/quickstart.sh`, executed and timed in CI against the ten-minute bar — measured 2 s locally excluding build), P1.19 (fault-injection suite: typed `ProviderFault` taxonomy — timeout/throttled/transport/protocol/server — enforced deadline in the openai-compat adapter, six offline L1 fault tests, killed-backend-mid-COPY L2 test proving typed failure + untouched target; mid-run cancellation already pinned by runtime behavioral tests), P1.20 (benchmark suite v1: `scripts/bench.sh` over deterministic generated inputs — end-to-end 434k–590k rows/s into PostgreSQL at ~10 CPU-s/GiB and 376–531 MiB peak RSS vs DataFusion-direct and DuckDB baselines; Criterion micro-benches pin the COPY encoder at 5.6–6.5M rows/s and governance fixed cost under 1 ms/record; first report published in `docs/benchmarks/`), X1.6 pulled forward (review queue: durable routing for `onInvalid: review` in the ledger database — queued records withheld across replays with zero re-dispatch/re-billing; `pramen ai review list/export/accept/reject`; accepted corrections schema-validated and recorded as zero-token `human-review` ledger results, rejections permanent), P1.8 provider-batch adapters (OpenAI Files + Batches in `openai-compat`; Bedrock model invocation jobs with S3 staging, `keys.jsonl` join fallback, L2-tested against MinIO + control-plane stub — live S2.1 acceptance pending credentials). Open: S2.2 frontier runs. |
 | Group P2 | P2.2 done (v0.1.0). Workspace now `0.2.0` after Phase 2 Group X1, cargo-dist plan verified, release checklist + `CONTRIBUTING.md` + `SECURITY.md`, release quickstart gate. Tag `v0.1.0` triggers binary publish. Open: P2.1 1M-record AWS acceptance (credentials). |
-| Phases 2–3 | Phase 2 done offline: X1.1–X1.8 + X2.1–X2.2. Phase 3 research offline: E2.1–E2.2, E2.3 scaffolding, **E2.4 done**. Phase 3 product: **E1.3 done** (fan-out via `from` + `sinks`, ADR 0007 commit barrier); **E1.2 done** (append-only Flight SQL sink via `CommandStatementIngest`, ADR 0008, L1 mock-server tested); **E1.4 done** (`pramen inspect connector`, `pramen_core::connector` registry + commit-barrier harness, published `docs/connectors/support-matrix.md`). Open: E1.1, E2.3 measured legs, E2.5. Cloud-blocked: S2.2 frontier, P2.1 acceptance. |
+| Phases 2–3 | Phase 2 done offline: X1.1–X1.8 + X2.1–X2.2. Phase 3 research: E2.1–E2.2, **E2.3** Redpanda+DocETL measured on local Ollama (ADR 0009; warehouse AI deferred), **E2.4 done**. Phase 3 product: **E1.3 done** (fan-out via `from` + `sinks`, ADR 0007 commit barrier); **E1.2 done** (append-only Flight SQL sink via `CommandStatementIngest`, ADR 0008, L1 mock-server tested); **E1.4 done** (`pramen inspect connector`, `pramen_core::connector` registry + commit-barrier harness, published `docs/connectors/support-matrix.md`). Open: E1.1, E2.5. Paid-only: S2.1, P2.1, Bedrock S2.2. |
 
 This plan turns the architecture into ordered, parallelizable tasks. Every
 task has an owner-agnostic definition of done and, where it matters, a
@@ -143,6 +143,9 @@ the numbers disagree with the design. Ordered by risk to the thesis.
   Exit metrics: 100% result reuse on replay of a completed run; ledger
   overhead per work item measured at 10k/100k items; kill -9 mid-run loses
   zero completed results.
+  *Offline legs done earlier. Live Bedrock paid-only under ADR 0009; local
+  openai-compat (Ollama) acceptance substitute:
+  `docs/research/local-ollama-frontier.md`.*
 - **S1.2 Parquet + SQL over a bounded stream.** Partitioned Parquet through
   `object_store` (MinIO + real S3), DataFusion single-input SQL transform over
   the batch stream. Exit metrics: peak RSS stays under a configured ceiling
@@ -176,6 +179,10 @@ the numbers disagree with the design. Ordered by risk to the thesis.
   Bedrock model on identical prompts/schemas; same schema through local vLLM
   with structured decoding. Exit: a published quality-cost frontier table and
   a pinned model choice per tier, recorded as an ADR.
+  *Local substitute done 2026-07-22 (ADR 0009): Ollama `llama3.2:3b` via
+  `openai-compat` on 25 golden items —
+  `docs/research/local-ollama-frontier.md`. Hosted Bedrock/vLLM frontier
+  remains paid-only / not planned under the no-subscription budget.*
 
 Phase 0 exit: all spike reports merged; architecture §17 decisions confirmed
 or amended; go/no-go recorded for the v1 plan.
@@ -442,9 +449,11 @@ benchmark baselines locked as regression references.
   *Scaffolded 2026-07-21: `docs/compare/orientation.md` + generated
   `docs/benchmarks/compare-scoreboard.{json,md}` (`mise run compare-scoreboard`,
   CI `--check`); site page `project/comparison`; harnesses under
-  `compare/redpanda-connect/` and `compare/docetl/` (`harness_ready`).
-  Remaining: dated measured runs for competitor AI / warehouse legs and
-  flip scoreboard rows to `measured`.*
+  `compare/redpanda-connect/` and `compare/docetl/`.
+  Local measured 2026-07-22 (ADR 0009): Redpanda Connect 4.53 OSS `http`→Ollama
+  and DocETL 0.3.0 `structured_output` on 25 tickets —
+  `docs/benchmarks/2026-07-22-local-ollama-competitors.md`; scoreboard rows
+  flipped to `measured`. Warehouse AI SQL remains `deferred`.*
 - **E2.4** Reproducibility artifact: one-command harness that regenerates
   every figure from generators + pinned configs; artifact-evaluation
   checklist for the target venue.

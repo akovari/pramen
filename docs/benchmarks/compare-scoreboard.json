@@ -5,11 +5,14 @@
     "offline": "Regenerate on PRs that touch load path, COPY, ledger/reuse, bench, or compare harness (`mise run compare-scoreboard`). CI runs `--check`.",
     "cloud": "Competitor AI / warehouse legs are env-gated and budget-capped; not required for PR green."
   },
-  "generatedAt": "2026-07-21T10:12:40Z",
+  "generatedAt": "2026-07-22T08:48:42Z",
   "sources": [
     "docs/benchmarks/2026-07-12-v1.md",
     "docs/spikes/s1-3-postgres-copy.md",
-    "docs/research/rq2-memoization-metrics.json"
+    "docs/research/rq2-memoization-metrics.json",
+    "docs/benchmarks/2026-07-22-local-ollama-competitors.md",
+    "docs/research/local-ollama-frontier.md",
+    "docs/adr/0009-local-only-ollama-acceptance.md"
   ],
   "scenarios": [
     {
@@ -72,7 +75,7 @@
       "status": "measured",
       "report": "docs/research/rq2-memoization.md",
       "metricsRef": "docs/research/rq2-memoization-metrics.json",
-      "notes": "Offline mock provider + SQLite ledger. Live Bedrock confirmation deferred to S2.2.",
+      "notes": "Offline mock provider + SQLite ledger. Live Bedrock paid-only (ADR 0009); local Ollama frontier substitute in docs/research/local-ollama-frontier.md.",
       "rows": [
         {
           "system": "Pramen ledger replay (online)",
@@ -97,27 +100,53 @@
     {
       "id": "redpanda-connect-ai",
       "title": "Governed enrichment vs Redpanda Connect AI processor",
-      "status": "harness_ready",
-      "report": null,
+      "status": "measured",
+      "report": "docs/benchmarks/2026-07-22-local-ollama-competitors.md",
       "harness": "compare/redpanda-connect/",
-      "notes": "Config scaffold checked in. Run with COMPARE_REDPANDA=1 and provider credentials; publish a dated report under docs/benchmarks/ before flipping status to measured.",
-      "rows": []
+      "notes": "Local Ollama (ADR 0009). OSS http processor to Ollama; branded openai_chat_completion is Enterprise-gated in Connect 4.53. Not Bedrock-measured.",
+      "rows": [
+        {
+          "system": "Redpanda Connect 4.53 + Ollama llama3.2:3b (http)",
+          "metric": "items_completed",
+          "value": "25/25",
+          "detail": "60.5 s wall; threads=1; $0"
+        },
+        {
+          "system": "Pramen ai evaluate (same pin, see frontier report)",
+          "metric": "schema_valid",
+          "value": "25/25",
+          "detail": "weighted ~0.589; schema-bound; $0"
+        }
+      ]
     },
     {
       "id": "docetl-extract",
       "title": "Structured extraction vs DocETL",
-      "status": "harness_ready",
-      "report": null,
+      "status": "measured",
+      "report": "docs/benchmarks/2026-07-22-local-ollama-competitors.md",
       "harness": "compare/docetl/",
-      "notes": "Pipeline scaffold checked in. Run with COMPARE_DOCETL=1; publish dated report before measured.",
-      "rows": []
+      "notes": "Local Ollama (ADR 0009). DocETL 0.3.0 structured_output + openai/llama3.2:3b. Not Bedrock-measured.",
+      "rows": [
+        {
+          "system": "DocETL 0.3.0 + Ollama llama3.2:3b",
+          "metric": "items_completed",
+          "value": "25/25",
+          "detail": "68.8 s wall; max-threads=1; $0; free-form categories"
+        },
+        {
+          "system": "Pramen ai evaluate (same pin)",
+          "metric": "schema_valid",
+          "value": "25/25",
+          "detail": "see docs/research/local-ollama-frontier.md"
+        }
+      ]
     },
     {
       "id": "warehouse-ai-sql",
       "title": "Operational PG enrich vs in-warehouse AI SQL",
       "status": "deferred",
       "report": null,
-      "notes": "Qualitative only until a budgeted L3 harness exists (Databricks ai_query / Snowflake Cortex / BigQuery AI.GENERATE_TABLE). See orientation for when the warehouse wins.",
+      "notes": "Still deferred under ADR 0009 (no free local warehouse AI SQL). Qualitative orientation only.",
       "rows": []
     }
   ]
