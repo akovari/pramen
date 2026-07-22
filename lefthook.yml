@@ -1,6 +1,7 @@
 # Local gates that mirror CI Lint. Install path: `mise run setup-hooks`
-# (sets local core.hooksPath=.githooks). Do not rely on `lefthook install`
-# alone when a global core.hooksPath is set.
+# (sets local core.hooksPath=.githooks). The committed `.githooks/*`
+# scripts call mise/cargo directly; this file documents the same checks
+# for `lefthook run` if you prefer that CLI.
 #
 # Escape: LEFTHOOK=0 git commit|push
 

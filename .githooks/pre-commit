@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Repo-local pre-commit: Aikido secrets (optional) + lefthook rustfmt.
+# Repo-local pre-commit: Aikido secrets (optional) + rustfmt when *.rs staged.
 # Installed via: mise run setup-hooks  (sets local core.hooksPath=.githooks)
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
@@ -13,9 +13,14 @@ if [[ "${LEFTHOOK:-}" == "0" ]]; then
   exit 0
 fi
 
+# Skip fmt when no Rust files are staged (docs-only commits).
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -q '\.rs$'; then
+  exit 0
+fi
+
 if ! command -v mise >/dev/null 2>&1; then
-  echo "error: mise not on PATH; install mise or run \`mise run lint\` manually" >&2
+  echo "error: mise not on PATH; install mise or run \`cargo fmt --all --check\`" >&2
   exit 1
 fi
 
-mise exec -- lefthook run pre-commit
+mise exec -- cargo fmt --all --check

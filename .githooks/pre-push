@@ -14,4 +14,6 @@ if ! command -v mise >/dev/null 2>&1; then
   exit 1
 fi
 
-mise exec -- lefthook run pre-push
+# Call mise directly (not `lefthook run`) so a custom core.hooksPath does not
+# trip lefthook's "hooks path not supported" install sync on every push.
+mise run lint

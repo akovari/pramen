@@ -27,15 +27,15 @@ restart-safe LLM enrichment as a systems problem.*
 
 | Section | Content source (already exists) | Offline status |
 | --- | --- | --- |
-| 1. Introduction / positioning | architecture §1–2, `docs/compare/orientation.md` | Ready to draft |
-| 2. Threats / honest caveats | architecture §2 caveats | Ready to draft |
-| 3. System overview | architecture §3–11 (lean binary, stages, ledger, sinks) | Ready to draft |
-| 4. RQ1 Dispatch policy | `e2-1-dispatch-policy.md`, `e2-1-dispatch-frontier.md` | Offline model + mock frontier done; live frontier → S2.2 |
-| 5. RQ2 Memoization | `rq2-memoization.md`, `rq2-memoization-metrics.json` | Offline measured; live Bedrock confirm → S2.2 |
-| 6. RQ3 Comparison | scoreboard + `compare/` harnesses | Offline legs measured; Redpanda+DocETL local Ollama measured (ADR 0009); warehouse AI deferred |
+| 1. Introduction / positioning | architecture §1–2, `docs/compare/orientation.md` | Drafted in `paper-draft.md` |
+| 2. Threats / honest caveats | architecture §2 caveats | Drafted in `paper-draft.md` |
+| 3. System overview | architecture §3–11 (lean binary, stages, ledger, sinks) | Drafted in `paper-draft.md` |
+| 4. RQ1 Dispatch policy | `e2-1-dispatch-policy.md`, `e2-1-dispatch-frontier.md` | Offline model + mock frontier done; live Bedrock paid-only (ADR 0009); local Ollama substitute measured |
+| 5. RQ2 Memoization | `rq2-memoization.md`, `rq2-memoization-metrics.json` | Offline measured; live Bedrock paid-only |
+| 6. RQ3 Comparison | scoreboard + `compare/` harnesses | Offline + local Ollama Redpanda/DocETL measured (ADR 0009); warehouse AI deferred |
 | 7. Implementation notes | connector matrix, COPY spike, WASM spike reports | Ready |
-| 8. Related work | architecture §2 families + §19 sources | Ready |
-| 9. Limitations | at-least-once window, append-only Flight SQL, no ADBC yet | Ready |
+| 8. Related work | architecture §2 families + §19 sources | Drafted in `paper-draft.md` |
+| 9. Limitations | at-least-once window, append-only Flight SQL, ADBC deferred (ADR 0010) | Drafted in `paper-draft.md` |
 | 10. Artifact | `artifact-manifest.json`, `mise run reproduce` | Offline AE path done (E2.4); venue kit deferred |
 
 ## Figures / tables inventory
@@ -63,12 +63,12 @@ Against architecture §2 honest caveats:
 ## Open decisions (block full E2.5)
 
 1. **Venue** — VLDB / CIDR / SIGMOD demo / workshop (architecture §18 shortlist).
-2. **Live frontier runs** — S2.2 credentials/budget.
-3. **E2.3 measured competitor legs** — Redpanda Connect / DocETL / warehouse AI.
+2. Paid live frontier / AWS 1M — deferred under ADR 0009 (local Ollama
+   substitutes recorded).
 
 ## Next offline writing steps (no venue required)
 
-1. Draft §1–3 and §8–9 from architecture + orientation (prose only).
+1. ~~Draft §1–3 and §8–9~~ → `docs/research/paper-draft.md` (2026-07-22).
 2. Freeze figure captions that cite offline regenerate commands.
 3. When a venue is chosen: ADR with deadline + page limit + AE rules; remap
    this outline into the venue template.
