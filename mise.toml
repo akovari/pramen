@@ -21,6 +21,14 @@ run = [
 ]
 env = { CARGO_BUILD_WARNINGS = "deny" }
 
+[tasks.setup-hooks]
+description = "Point this clone at .githooks (local core.hooksPath only; keeps Aikido if chained there)"
+run = [
+    "chmod +x .githooks/pre-commit .githooks/pre-push",
+    "git config core.hooksPath .githooks",
+    "echo \"core.hooksPath=$(git config --get core.hooksPath) (repository-local)\"",
+]
+
 [tasks.test]
 description = "Run unit/integration tests and doc tests"
 run = [

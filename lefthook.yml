@@ -1,10 +1,18 @@
-# Install once per clone: `mise exec -- lefthook install`
+# Local gates that mirror CI Lint. Install path: `mise run setup-hooks`
+# (sets local core.hooksPath=.githooks). Do not rely on `lefthook install`
+# alone when a global core.hooksPath is set.
+#
+# Escape: LEFTHOOK=0 git commit|push
+
 pre-commit:
   parallel: true
   jobs:
     - name: rustfmt
       glob: "*.rs"
       run: cargo fmt --all --check
-    - name: clippy
-      glob: "*.rs"
-      run: CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets
+
+pre-push:
+  jobs:
+    - name: lint
+      # Identical to CI Lint / `mise run lint` (fmt + clippy, warnings denied).
+      run: mise run lint

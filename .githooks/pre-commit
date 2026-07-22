@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Repo-local pre-commit: Aikido secrets (optional) + lefthook rustfmt.
+# Installed via: mise run setup-hooks  (sets local core.hooksPath=.githooks)
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+if [[ -x "${HOME}/.local/bin/aikido-local-scanner" ]]; then
+  "${HOME}/.local/bin/aikido-local-scanner" pre-commit-scan "$ROOT"
+fi
+
+if [[ "${LEFTHOOK:-}" == "0" ]]; then
+  exit 0
+fi
+
+if ! command -v mise >/dev/null 2>&1; then
+  echo "error: mise not on PATH; install mise or run \`mise run lint\` manually" >&2
+  exit 1
+fi
+
+mise exec -- lefthook run pre-commit

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Repo-local pre-push: same Lint gate as CI (`mise run lint`).
+# Escape: LEFTHOOK=0 git push   or   git push --no-verify
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+if [[ "${LEFTHOOK:-}" == "0" ]]; then
+  exit 0
+fi
+
+if ! command -v mise >/dev/null 2>&1; then
+  echo "error: mise not on PATH; install mise or run \`mise run lint\` manually" >&2
+  exit 1
+fi
+
+mise exec -- lefthook run pre-push

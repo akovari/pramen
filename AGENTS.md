@@ -24,6 +24,7 @@ schema-bound LLM enrichment. Design phase artifacts:
 
 Everything runs through mise; CI runs the same tasks.
 
+- `mise run setup-hooks` — once per clone: set **local** `core.hooksPath=.githooks` so pre-commit (fmt + optional Aikido) and pre-push (`mise run lint`) run even when a global hooksPath would bypass lefthook. Skip with `LEFTHOOK=0` or `--no-verify`.
 - `mise run ci` — full local gate (fmt, clippy, deny, nextest, doc tests)
 - `mise run test` / `mise run cov` — tests / coverage with ratchet check
 - `mise run bench` — criterion benches against stored baselines

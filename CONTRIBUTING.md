@@ -22,12 +22,16 @@ point; the full working protocol for contributors and agents lives in
 
 ## Local setup
 
-Install tools and run the same gates CI runs:
+Install tools, wire git hooks, and run the same gates CI runs:
 
 ```bash
 mise install
+mise run setup-hooks   # local core.hooksPath=.githooks (fmt + pre-push lint)
 mise run ci
 ```
+
+Hooks: `.githooks/` runs optional Aikido secrets on commit and `mise run lint`
+on push (same as CI Lint). Escape with `LEFTHOOK=0` or `--no-verify`.
 
 Optional L2 tests need local services or env vars — see `AGENTS.md` for
 `PRAMEN_TEST_POSTGRES_DSN` and `PRAMEN_TEST_S3_URL`.
