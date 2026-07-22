@@ -1,9 +1,9 @@
 ---
 title: CLI reference
-description: The pramen command surface — validate, explain, run, transform, ai.
+description: The pramen command surface — validate, explain, run, inspect, transform, ai.
 ---
 
-The v1 CLI has five top-level command groups. Global flags come before or
+The CLI has six top-level command groups. Global flags come before or
 after the subcommand.
 
 ## Global flags
@@ -213,6 +213,24 @@ Subcommands (all take `--ledger <path>`, defaulting like `ai status`):
 
 Unique key prefixes are accepted; ambiguous ones are refused so a
 decision can never land on the wrong record.
+
+## `pramen inspect connector [ID] [--json]`
+
+List built-in connectors (sources, sinks, transforms) with support level
+and a one-line summary, or show one connector in detail. Levels are
+`supported`, `preview`, and `planned`. The published matrix
+[`docs/connectors/support-matrix.md`](https://github.com/akovari/pramen/blob/main/docs/connectors/support-matrix.md)
+is generated from the same registry and drift-checked in CI.
+
+```console
+$ pramen inspect connector
+connectors: 8 built-in
+  source.objectStore (source, supported) — Parquet or NDJSON from local paths, file://, or s3://
+  sink.postgres (sink, supported) — Native binary COPY into PostgreSQL (append or upsert)
+  ...
+
+$ pramen inspect connector sink.flightSql --json
+```
 
 ## `pramen transform test`
 

@@ -118,8 +118,22 @@ _Avoid_: savepoint, snapshot.
 **Delivery contract**:
 A sink's documented semantics: write modes, idempotency strategy, type
 matrix, failure behavior. At-least-once is the default; anything stronger
-must be stated in the contract.
+must be stated in the contract. Exposed on each connector descriptor
+(`pramen inspect connector`) and in the support matrix.
 _Avoid_: guarantee (unqualified), exactly-once (unless the contract proves it).
+
+**Connector**:
+A first-party (or planned) source, sink, or transform with a stable id,
+support level, and delivery contract. Inspected via
+`pramen inspect connector`; rows live in `docs/connectors/support-matrix.md`.
+_Avoid_: plugin (until a dynamic SDK ships), driver (reserved for ADBC
+native libraries).
+
+**Support level**:
+How far a connector is carried in product support: `supported` (CI-backed
+first-party), `preview` (shipped with documented limits), `planned` (named,
+not in the lean binary).
+_Avoid_: GA, beta, experimental (as synonyms in the matrix).
 
 **Smoke run**:
 A `pramen run --smoke` execution: capped records, pinned fast/cheap model,

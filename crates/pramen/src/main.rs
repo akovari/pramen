@@ -1,12 +1,14 @@
 //! The `pramen` CLI.
 //!
-//! v1 surface: `validate`, `explain`, `run`, `ai`. Pipelines may combine
-//! deterministic SQL steps with governed semantic transforms backed by the
-//! durable inference ledger (`pramen ai status` inspects it;
-//! `pramen ai evaluate` measures model quality and cost on a golden corpus).
+//! v1 surface: `validate`, `explain`, `run`, `ai`, `inspect`, `transform`.
+//! Pipelines may combine deterministic SQL steps with governed semantic
+//! transforms backed by the durable inference ledger (`pramen ai status`
+//! inspects it; `pramen ai evaluate` measures model quality and cost on a
+//! golden corpus).
 
 mod dispatch_plan;
 mod evaluate;
+mod inspect;
 mod review;
 mod run;
 mod transform_test;
@@ -94,6 +96,23 @@ enum Command {
     Transform {
         #[command(subcommand)]
         command: TransformCommand,
+    },
+    /// Inspect built-in connectors and their support levels (E1.4).
+    Inspect {
+        #[command(subcommand)]
+        command: InspectCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum InspectCommand {
+    /// List connectors or show one by id (see docs/connectors/support-matrix.md).
+    Connector {
+        /// Stable connector id (e.g. `sink.postgres`). Omit to list all.
+        id: Option<String>,
+        /// Emit JSON instead of text.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -363,6 +382,18 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Command::Inspect {
+            command: InspectCommand::Connector { id, json },
+        } => match inspect::inspect_connector(id.as_deref(), json) {
+            Ok(text) => {
+                println!("{text}");
+                ExitCode::SUCCESS
+            }
+            Err(message) => {
+                eprintln!("pramen: inspect connector failed: {message}");
+                ExitCode::FAILURE
+            }
+        },
     }
 }
 

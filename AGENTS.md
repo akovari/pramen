@@ -37,6 +37,9 @@ Everything runs through mise; CI runs the same tasks.
   quickstart (`scripts/release-quickstart.sh`; needs `PRAMEN_POSTGRES_DSN`)
 - `mise run clean` — delete `target/` and spike build dirs when disk is tight
 - `pramen transform test` — offline WASM component conformance (X1.3)
+- `pramen inspect connector [ID]` — list or show connector support levels /
+  delivery contracts (E1.4); matrix in `docs/connectors/support-matrix.md`
+  (regenerate: `cargo run -p pramen-core --example generate_connector_matrix`)
 
 ## Code standards
 

@@ -1,9 +1,8 @@
 //! Core Pramen types: pipeline specifications, plans, the dataflow runtime,
-//! bounded channels, checkpoints, and observability.
-//!
-//! See `docs/architecture.md` for the design this crate implements.
+//! bounded channels, checkpoints, observability, and connector descriptors.
 
 pub mod checkpoint;
+pub mod connector;
 pub mod observe;
 pub mod runtime;
 pub mod spec;

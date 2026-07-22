@@ -897,12 +897,15 @@ batch identifiers. OpenTelemetry export should be available, but local
 Prometheus metrics and readable console diagnostics should work without a
 collector.
 
-The v1 CLI is four commands:
+The CLI grows with the features that need it:
 
 - `pramen validate pipeline.yaml`
 - `pramen explain pipeline.yaml`
 - `pramen run pipeline.yaml`
-- `pramen ai evaluate ...`
+- `pramen ai evaluate ...` / `pramen ai status` / `pramen ai review ...`
+- `pramen transform test` (WASM conformance)
+- `pramen inspect connector [ID]` (support levels and delivery contracts;
+  matrix in `docs/connectors/support-matrix.md`)
 
 `pramen run --smoke` is a runtime preset, not a separate mode: it caps the
 record count, pins semantic transforms to the pipeline's designated fast/cheap
@@ -913,10 +916,7 @@ All commands accept `--log-format pretty|json|silent`. `json` emits
 newline-delimited structured events (run, work unit, semantic dispatch,
 validation, commit) suitable for capture without an OpenTelemetry collector.
 
-Later commands arrive with the features that need them: `pramen ai review`
-with the review-queue workflow, `pramen transform test` with WASM components,
-`pramen inspect connector` with the connector SDK, and `pramen benchmark`
-with the published benchmark suite.
+`pramen benchmark` arrives with the published benchmark suite.
 
 ## 14. Performance methodology
 
@@ -1034,7 +1034,7 @@ conformance suite.
 - ADBC-backed warehouse sinks with container driver profiles;
 - Flight SQL append sink (shipped; upsert / broader matrix still open);
 - fan-out DAGs (shipped, ADR 0007);
-- connector SDK and conformance tests;
+- connector inspect + support matrix (shipped, E1.4); dynamic plugin SDK deferred;
 - semantic transform evaluation and provider conformance suites;
 - compatibility policy, security reporting, release automation, and examples;
 - the published benchmark and paper artifact (section 18).

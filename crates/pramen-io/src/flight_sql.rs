@@ -213,6 +213,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn flight_sql_passes_connector_conformance() {
+        let rows = Arc::new(AtomicU64::new(0));
+        let table = Arc::new(Mutex::new(None));
+        let addr = serve_mock(Arc::clone(&rows), Arc::clone(&table)).await;
+        let endpoint = format!("http://{addr}");
+        let probe = Arc::clone(&rows);
+        pramen_core::connector::assert_sink_commit_barrier(
+            || FlightSqlSink::new(&endpoint, "public.events", None).unwrap(),
+            move || probe.load(Ordering::SeqCst),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
     async fn commit_ingests_buffered_batches() {
         let rows = Arc::new(AtomicU64::new(0));
         let table = Arc::new(Mutex::new(None));
