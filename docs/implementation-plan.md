@@ -13,15 +13,14 @@ snapshot orients a reader without leaving the file.
 
 | Priority | Task | Why now |
 | --- | --- | --- |
-| 1 | **E1.1** ADBC sink (needs ADR: first warehouse by demand) | Product Group E1; blocked only on warehouse choice |
-| 2 | **E2.3** measured competitor legs | Harnesses ready; needs budget/credentials |
-| 3 | **E2.5** Paper (needs venue ADR) | Research Group E2 |
+| 1 | **E2.5 outline / prose** (venue TBD) | Venue-agnostic outline in `docs/research/paper-outline.md`; full draft waits on venue ADR |
+| 2 | **E1.1** ADBC (needs ADR: first warehouse) | Blocked on warehouse choice |
+| 3 | **E2.3** measured competitor legs | Needs budget/credentials |
 | — | Cloud-blocked | S1.1 live, S2.1 live, S2.2 frontier, P2.1 |
 
-Just completed: **E1.4** connector inspect + support matrix + sink
-commit-barrier harness, **E1.2** Flight SQL sink (ADR 0008), **E1.3**
-fan-out (ADR 0007), and **E2.4** reproducibility harness. **E2.5** waits
-on a venue ADR.
+Just completed: **E1.4** connector inspect + support matrix, **E1.2** Flight
+SQL (ADR 0008), **E1.3** fan-out (ADR 0007), **E2.4** reproducibility.
+**E2.5** venue not selected yet — offline outline only.
 
 | Area | State |
 | --- | --- |
@@ -459,6 +458,9 @@ benchmark baselines locked as regression references.
 - **E2.5** Paper drafting against the venue deadline recorded in the venue
   ADR; internal red-team review against the "honest caveats" in
   architecture §2.
+  *Offline scaffolding 2026-07-22: venue-agnostic outline + figure inventory
+  in `docs/research/paper-outline.md`. Venue not selected yet — no venue
+  ADR; prose drafts may proceed from the outline without venue formatting.*
 
 ## 7. Continuous tracks (no phase)
 
@@ -488,7 +490,10 @@ benchmark baselines locked as regression references.
    local per ADR 0005: protocol stubs with recorded fixtures, MinIO,
    testcontainers PostgreSQL, local model servers, and a fake batch service —
    zero cloud access, zero credentials.
-5. Paper venue: decided after Phase 0 spikes, but every experiment (spike
-   reports, golden evaluation, benchmark suite) is designed to VLDB-grade
-   rigor from day one — generators, pins, machine specs, and raw results
-   published for everything.
+5. Paper venue: **not selected yet** (architecture §18 shortlist remains
+   VLDB / CIDR / SIGMOD demo / workshop). Offline outline lives in
+   `docs/research/paper-outline.md`. Every experiment (spike reports, golden
+   evaluation, benchmark suite) is still designed to VLDB-grade rigor —
+   generators, pins, machine specs, and raw results published for everything.
+   A venue ADR (deadline, page limit, AE rules) is required before E2.5 is
+   marked done.

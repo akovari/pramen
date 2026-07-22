@@ -74,7 +74,9 @@ This page is the honest summary. Workspace version: **0.2.0**.
   competitor AI / warehouse legs still open. **E2.4 done:**
   `mise run reproduce` / `reproduce-check` +
   [artifact evaluation checklist](https://github.com/akovari/pramen/blob/main/docs/research/artifact-evaluation.md).
-  Open: E2.5 paper (needs venue ADR). Live Bedrock frontier remains tied to
+  Open: E2.5 paper (venue TBD — offline outline in
+  [`docs/research/paper-outline.md`](https://github.com/akovari/pramen/blob/main/docs/research/paper-outline.md)).
+  Live Bedrock frontier remains tied to
   S2.2.
   [Governed AI reuse contract](/pramen/concepts/governed-ai/#reuse-contract-rq2).
 
