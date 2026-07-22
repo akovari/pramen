@@ -174,6 +174,39 @@
             "target"
           ],
           "type": "object"
+        },
+        {
+          "description": "Append Arrow batches to a Flight SQL endpoint (ADR 0008).",
+          "properties": {
+            "endpoint": {
+              "description": "gRPC endpoint URI, e.g. `http://127.0.0.1:50051` or `https://…`.",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/SinkMode",
+              "default": "append",
+              "description": "Load semantics. Only [`SinkMode::Append`] is accepted in v1alpha1."
+            },
+            "target": {
+              "description": "Destination table: `schema.table` or `catalog.schema.table`.",
+              "type": "string"
+            },
+            "tokenEnv": {
+              "default": "PRAMEN_FLIGHT_SQL_TOKEN",
+              "description": "Environment variable holding an optional Bearer token.\n\nWhen unset or empty, no `Authorization` header is sent.",
+              "type": "string"
+            },
+            "type": {
+              "const": "flightSql",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "endpoint",
+            "target"
+          ],
+          "type": "object"
         }
       ],
       "properties": {
@@ -612,6 +645,40 @@
           },
           "required": [
             "type",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Append Arrow batches to a Flight SQL endpoint (ADR 0008).",
+          "properties": {
+            "endpoint": {
+              "description": "gRPC endpoint URI, e.g. `http://127.0.0.1:50051` or `https://…`.",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/SinkMode",
+              "default": "append",
+              "description": "Load semantics. Only [`SinkMode::Append`] is accepted in v1alpha1."
+            },
+            "target": {
+              "description": "Destination table: `schema.table` or `catalog.schema.table`.",
+              "type": "string"
+            },
+            "tokenEnv": {
+              "default": "PRAMEN_FLIGHT_SQL_TOKEN",
+              "description": "Environment variable holding an optional Bearer token.\n\nWhen unset or empty, no `Authorization` header is sent.",
+              "type": "string"
+            },
+            "type": {
+              "const": "flightSql",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "endpoint",
             "target"
           ],
           "type": "object"

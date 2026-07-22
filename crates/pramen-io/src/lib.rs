@@ -9,12 +9,16 @@
 //! - [`SqlTransform`]: per-batch DataFusion SQL where the incoming batch is
 //!   visible as the table `input`;
 //! - [`PostgresCopySink`]: native binary `COPY` into PostgreSQL inside a
-//!   single transaction, committed only when the run succeeds.
+//!   single transaction, committed only when the run succeeds;
+//! - [`FlightSqlSink`]: append Arrow batches to a Flight SQL endpoint via
+//!   `CommandStatementIngest` (ADR 0008).
 
+mod flight_sql;
 mod postgres;
 mod source;
 mod sql;
 
+pub use flight_sql::FlightSqlSink;
 pub use postgres::PostgresCopySink;
 #[doc(hidden)]
 pub use postgres::encode_batch;

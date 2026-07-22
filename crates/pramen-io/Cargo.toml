@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 arrow = { workspace = true }
+arrow-flight = { version = "56", default-features = false, features = ["flight-sql", "tls-webpki-roots"] }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 datafusion = { workspace = true }
@@ -19,6 +20,8 @@ pramen-core = { path = "../pramen-core" }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "net"] }
 tokio-postgres = { workspace = true }
+tokio-stream = { version = "0.1", default-features = false, features = ["net"] }
+tonic = { version = "0.13", default-features = false, features = ["channel", "server", "transport", "tls-webpki-roots"] }
 tracing = { workspace = true }
 url = { workspace = true }
 

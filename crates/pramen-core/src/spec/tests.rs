@@ -267,9 +267,97 @@ spec:
     assert_eq!(spec.spec.runtime.target_batch_bytes, 8 * 1024 * 1024);
     assert_eq!(spec.spec.runtime.max_inflight_bytes, 256 * 1024 * 1024);
     assert!(spec.spec.transforms.is_empty());
-    let SinkSpec::Postgres { mode, dsn_env, .. } = spec.spec.sink.as_ref().unwrap();
+    let SinkSpec::Postgres { mode, dsn_env, .. } = spec.spec.sink.as_ref().unwrap() else {
+        panic!("expected postgres sink");
+    };
     assert_eq!(*mode, SinkMode::Append);
     assert_eq!(dsn_env, "PRAMEN_POSTGRES_DSN");
+}
+
+#[test]
+fn flight_sql_sink_parses_with_defaults() {
+    let yaml = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: flight
+spec:
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  sink:
+    type: flightSql
+    endpoint: http://127.0.0.1:50051
+    target: public.events
+";
+    let spec = parse(yaml).unwrap();
+    let SinkSpec::FlightSql {
+        endpoint,
+        target,
+        mode,
+        token_env,
+    } = spec.spec.sink.as_ref().unwrap()
+    else {
+        panic!("expected flightSql sink");
+    };
+    assert_eq!(endpoint, "http://127.0.0.1:50051");
+    assert_eq!(target, "public.events");
+    assert_eq!(*mode, SinkMode::Append);
+    assert_eq!(token_env, "PRAMEN_FLIGHT_SQL_TOKEN");
+}
+
+#[test]
+fn flight_sql_rejects_upsert_and_bad_endpoint() {
+    let upsert = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: flight-upsert
+spec:
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  sink:
+    type: flightSql
+    endpoint: http://127.0.0.1:50051
+    target: public.events
+    mode: upsert
+";
+    let issues = issues_of(upsert);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.contains("spec.sink.mode") && i.contains("append")),
+        "issues: {issues:?}"
+    );
+
+    let bad_endpoint = "\
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: flight-bad-ep
+spec:
+  source:
+    type: object_store
+    url: file:///tmp/in/
+    format:
+      type: ndjson
+  sink:
+    type: flightSql
+    endpoint: grpc://127.0.0.1:50051
+    target: public.events
+";
+    let issues = issues_of(bad_endpoint);
+    assert!(
+        issues
+            .iter()
+            .any(|i| i.contains("spec.sink.endpoint") && i.contains("http")),
+        "issues: {issues:?}"
+    );
 }
 
 #[test]

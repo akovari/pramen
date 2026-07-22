@@ -76,8 +76,9 @@ Everything runs through mise; CI runs the same tasks.
   checkpoint `url` accepts `file://…` or the same Postgres schemes for the
   fleet checkpoint store, `PRAMEN_WASM_OCI_ALLOWLIST` merges with
   `runtime.wasmOciAllowlist` for digest-pinned OCI WASM pulls (fail closed
-  when both are empty), and `PRAMEN_OPENAI_API_KEY` supplies the optional
-  key for `openai-compat` models.
+  when both are empty), `PRAMEN_OPENAI_API_KEY` supplies the optional
+  key for `openai-compat` models, and `PRAMEN_FLIGHT_SQL_TOKEN` supplies the
+  optional Bearer token for `type: flightSql` sinks (unset/empty = no auth).
 - Conventional commits.
 
 ## Vocabulary discipline

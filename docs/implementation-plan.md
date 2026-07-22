@@ -2,9 +2,9 @@
 
 Status: in execution  
 Companion to: [architecture.md](architecture.md)  
-Last reviewed: 2026-07-21
+Last reviewed: 2026-07-22
 
-## Status snapshot (2026-07-21)
+## Status snapshot (2026-07-22)
 
 Authoritative per-task state lives in the mirrored GitHub issues; this
 snapshot orients a reader without leaving the file.
@@ -14,12 +14,13 @@ snapshot orients a reader without leaving the file.
 | Priority | Task | Why now |
 | --- | --- | --- |
 | 1 | **E1.1** ADBC sink (needs ADR: first warehouse by demand) | Product Group E1; blocked only on warehouse choice |
-| 2 | **E1.2** Flight SQL sink | Spec + runtime; no cloud |
-| 3 | **E2.3** measured competitor legs | Harnesses ready; needs budget/credentials |
+| 2 | **E2.3** measured competitor legs | Harnesses ready; needs budget/credentials |
+| 3 | **E1.4** Connector SDK + conformance harness | After E1 sinks settle |
 | — | Cloud-blocked | S1.1 live, S2.1 live, S2.2 frontier, P2.1 |
 
-Just completed: **E1.3** fan-out (ADR 0007) and **E2.4** reproducibility
-harness. **E2.5** waits on a venue ADR.
+Just completed: **E1.2** Flight SQL sink (ADR 0008), **E1.3** fan-out
+(ADR 0007), and **E2.4** reproducibility harness. **E2.5** waits on a
+venue ADR.
 
 | Area | State |
 | --- | --- |
@@ -28,7 +29,7 @@ harness. **E2.5** waits on a venue ADR.
 | Group F | F1, F2, F3 done (spec + validation + JSON Schema artifact; bounded-channel runner with commit-safe shutdown; log formats + metrics registry). F3 completed 2026-07-12: the JSONL event envelope is pinned by a snapshot test, and `run --otlp-endpoint` (or `PRAMEN_OTLP_ENDPOINT`) pushes the final run metrics to an OTLP collector over HTTP/protobuf — verified against a local collector stub. |
 | Group P1 | Three runnable verticals merged. Deterministic: `pramen run` executes Parquet/NDJSON → SQL → Postgres end to end, from local paths or `s3://` (MinIO-verified, 200k rows). Governed AI: `ai.extract`/`ai.classify` on the production SQLite ledger with pre-dispatch budgets, strict output validation, and `onInvalid` policies — verified end to end with full ledger reuse on replay. Checkpointed: file-granular work units on a crash-safe JSONL store (ADR 0006) — replay loads nothing, a grown directory loads only new files (verified end to end). In: P1.1 (local + S3 sources, including checkpointed S3 enumeration — unit identity from a single `LIST`, MinIO-verified incremental runs), P1.2 (NDJSON), P1.3 (checkpoint store + claim/complete), P1.4 (append + upsert COPY sink: stage + ON CONFLICT merge, idempotent replays, L2-tested), P1.5 (provider trait + capabilities), P1.6 (ledger + pinned canonicalization), P1.7 (Bedrock Converse adapter, L1 stub-tested; live acceptance pending credentials), P1.9 (OpenAI-compatible adapter), P1.10 (schema generation + validation), P1.11 (per-record budgets, output caps, `maxRunTokens` run ceiling, always-armed consecutive-invalid circuit breaker), P1.12 (sequential operator), P1.13 (per-batch SQL), P1.14 (delivery contract pinned by L2 tests: append duplicates on replay, upsert does not; crash-window e2e verified), P1.15 (validate/explain/run + `ai status`), P1.8 core (provider-batch operator: buffer, submit, poll, join; job ids durably recorded per item before awaiting; crash-after-submit reconciles by job and item id with zero re-billing, pinned by tests against the batch-capable mock — Bedrock/OpenAI batch adapters remain), P1.17 + S2.2 harness (`ai evaluate` over the versioned 520-item golden support-ticket corpus with weighted rubrics — schema-valid rate, per-field accuracy, macro-F1, weighted score, tokens/cost, latency percentiles, timestamped diffable results; the frontier table over real Bedrock/vLLM models remains), P1.16 (`run --smoke`: row cap, clamped semantic token ceiling, checkpointing bypassed; measured seconds on the example pipeline at zero cost), P1.18 (quickstart scripted in `scripts/quickstart.sh`, executed and timed in CI against the ten-minute bar — measured 2 s locally excluding build), P1.19 (fault-injection suite: typed `ProviderFault` taxonomy — timeout/throttled/transport/protocol/server — enforced deadline in the openai-compat adapter, six offline L1 fault tests, killed-backend-mid-COPY L2 test proving typed failure + untouched target; mid-run cancellation already pinned by runtime behavioral tests), P1.20 (benchmark suite v1: `scripts/bench.sh` over deterministic generated inputs — end-to-end 434k–590k rows/s into PostgreSQL at ~10 CPU-s/GiB and 376–531 MiB peak RSS vs DataFusion-direct and DuckDB baselines; Criterion micro-benches pin the COPY encoder at 5.6–6.5M rows/s and governance fixed cost under 1 ms/record; first report published in `docs/benchmarks/`), X1.6 pulled forward (review queue: durable routing for `onInvalid: review` in the ledger database — queued records withheld across replays with zero re-dispatch/re-billing; `pramen ai review list/export/accept/reject`; accepted corrections schema-validated and recorded as zero-token `human-review` ledger results, rejections permanent), P1.8 provider-batch adapters (OpenAI Files + Batches in `openai-compat`; Bedrock model invocation jobs with S3 staging, `keys.jsonl` join fallback, L2-tested against MinIO + control-plane stub — live S2.1 acceptance pending credentials). Open: S2.2 frontier runs. |
 | Group P2 | P2.2 done (v0.1.0). Workspace now `0.2.0` after Phase 2 Group X1, cargo-dist plan verified, release checklist + `CONTRIBUTING.md` + `SECURITY.md`, release quickstart gate. Tag `v0.1.0` triggers binary publish. Open: P2.1 1M-record AWS acceptance (credentials). |
-| Phases 2–3 | Phase 2 done offline: X1.1–X1.8 + X2.1–X2.2. Phase 3 research offline: E2.1–E2.2, E2.3 scaffolding, **E2.4 done**. Phase 3 product: **E1.3 done** (fan-out via `from` + `sinks`, ADR 0007 commit barrier). Open: E1.1–E1.2, E1.4, E2.3 measured legs, E2.5. Cloud-blocked: S2.2 frontier, P2.1 acceptance. |
+| Phases 2–3 | Phase 2 done offline: X1.1–X1.8 + X2.1–X2.2. Phase 3 research offline: E2.1–E2.2, E2.3 scaffolding, **E2.4 done**. Phase 3 product: **E1.3 done** (fan-out via `from` + `sinks`, ADR 0007 commit barrier); **E1.2 done** (append-only Flight SQL sink via `CommandStatementIngest`, ADR 0008, L1 mock-server tested). Open: E1.1, E1.4, E2.3 measured legs, E2.5. Cloud-blocked: S2.2 frontier, P2.1 acceptance. |
 
 This plan turns the architecture into ordered, parallelizable tasks. Every
 task has an owner-agnostic definition of done and, where it matters, a
@@ -397,6 +398,10 @@ benchmark baselines locked as regression references.
 - **E1.1** ADBC sink integration behind a feature/profile; container images
   with tested driver sets; first warehouse target chosen by user demand (ADR).
 - **E1.2** Flight SQL sink.
+  *Done 2026-07-22: `type: flightSql` sink (endpoint, target, append-only,
+  `tokenEnv`); `FlightSqlSink` buffers until commit then
+  `CommandStatementIngest` (ADR 0008); L1 mock Flight SQL server tests;
+  example `examples/local-parquet-to-flight-sql.yaml`; JSON Schema regen.*
 - **E1.3** Fan-out DAGs in spec + runtime.
   *Done 2026-07-21: optional `from` on transforms/sinks; `spec.sinks` for
   multi-sink fan-out (mutually exclusive with singular `sink`); validation

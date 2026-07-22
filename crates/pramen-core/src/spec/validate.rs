@@ -343,6 +343,39 @@ fn validate_sink_body(sink: &SinkSpec, path: &str, push: &mut impl FnMut(&str, S
                 }
             }
         }
+        SinkSpec::FlightSql {
+            endpoint,
+            target,
+            mode,
+            token_env,
+        } => {
+            if endpoint.trim().is_empty() {
+                push(&format!("{path}.endpoint"), "must not be empty".to_owned());
+            } else if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) {
+                push(
+                    &format!("{path}.endpoint"),
+                    format!("`{endpoint}` must be an http:// or https:// URI"),
+                );
+            }
+            let parts: Vec<&str> = target.split('.').collect();
+            if !(2..=3).contains(&parts.len()) || parts.iter().any(|p| p.trim().is_empty()) {
+                push(
+                    &format!("{path}.target"),
+                    format!(
+                        "`{target}` must be `schema.table` or `catalog.schema.table`"
+                    ),
+                );
+            }
+            if *mode != SinkMode::Append {
+                push(
+                    &format!("{path}.mode"),
+                    "Flight SQL sinks support only `append` in v1alpha1 (ADR 0008)".to_owned(),
+                );
+            }
+            if token_env.trim().is_empty() {
+                push(&format!("{path}.tokenEnv"), "must not be empty".to_owned());
+            }
+        }
     }
 }
 

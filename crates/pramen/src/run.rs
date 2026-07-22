@@ -479,25 +479,42 @@ async fn plan_sinks(
 ) -> Result<Vec<(String, String, Box<dyn Sink>)>, String> {
     let mut planned = Vec::new();
     for resolved in spec.spec.resolved_sinks() {
-        let SinkSpec::Postgres {
-            target,
-            mode,
-            keys,
-            dsn_env,
-        } = resolved.sink;
-        let dsn = std::env::var(dsn_env).map_err(|_| {
-            format!(
-                "sink `{}`: environment variable `{dsn_env}` with the PostgreSQL DSN is not set",
-                resolved.id
-            )
-        })?;
-        let sink = pramen_io::PostgresCopySink::connect(&dsn, target, *mode, keys)
-            .await
-            .map_err(|error| format!("sink `{}`: {error}", resolved.id))?;
+        let sink: Box<dyn Sink> = match resolved.sink {
+            SinkSpec::Postgres {
+                target,
+                mode,
+                keys,
+                dsn_env,
+            } => {
+                let dsn = std::env::var(dsn_env).map_err(|_| {
+                    format!(
+                        "sink `{}`: environment variable `{dsn_env}` with the PostgreSQL DSN is not set",
+                        resolved.id
+                    )
+                })?;
+                Box::new(
+                    pramen_io::PostgresCopySink::connect(&dsn, target, *mode, keys)
+                        .await
+                        .map_err(|error| format!("sink `{}`: {error}", resolved.id))?,
+                )
+            }
+            SinkSpec::FlightSql {
+                endpoint,
+                target,
+                mode: _,
+                token_env,
+            } => {
+                let token = std::env::var(token_env).ok().filter(|value| !value.is_empty());
+                Box::new(
+                    pramen_io::FlightSqlSink::new(endpoint, target, token)
+                        .map_err(|error| format!("sink `{}`: {error}", resolved.id))?,
+                )
+            }
+        };
         planned.push((
             resolved.id.to_owned(),
             resolved.from.to_owned(),
-            Box::new(sink) as Box<dyn Sink>,
+            sink,
         ));
     }
     if planned.is_empty() {

@@ -460,21 +460,35 @@ fn explain(spec: &PipelineSpec) {
     }
 
     for resolved in spec.spec.resolved_sinks() {
-        let SinkSpec::Postgres {
-            target,
-            mode,
-            keys,
-            dsn_env,
-        } = resolved.sink;
-        let keys_note = if keys.is_empty() {
-            String::new()
-        } else {
-            format!(" on [{}]", keys.join(", "))
-        };
-        println!(
-            "  sink {}: postgres {target} (mode {mode:?}{keys_note}, from {}, dsn from ${dsn_env})",
-            resolved.id, resolved.from
-        );
+        match resolved.sink {
+            SinkSpec::Postgres {
+                target,
+                mode,
+                keys,
+                dsn_env,
+            } => {
+                let keys_note = if keys.is_empty() {
+                    String::new()
+                } else {
+                    format!(" on [{}]", keys.join(", "))
+                };
+                println!(
+                    "  sink {}: postgres {target} (mode {mode:?}{keys_note}, from {}, dsn from ${dsn_env})",
+                    resolved.id, resolved.from
+                );
+            }
+            SinkSpec::FlightSql {
+                endpoint,
+                target,
+                mode,
+                token_env,
+            } => {
+                println!(
+                    "  sink {}: flightSql {endpoint} → {target} (mode {mode:?}, from {}, token from ${token_env})",
+                    resolved.id, resolved.from
+                );
+            }
+        }
     }
 
     let runtime = &spec.spec.runtime;

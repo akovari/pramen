@@ -544,10 +544,30 @@ pub enum SinkSpec {
         #[serde(default = "default_dsn_env")]
         dsn_env: String,
     },
+    /// Append Arrow batches to a Flight SQL endpoint (ADR 0008).
+    #[serde(rename = "flightSql", rename_all = "camelCase")]
+    FlightSql {
+        /// gRPC endpoint URI, e.g. `http://127.0.0.1:50051` or `https://…`.
+        endpoint: String,
+        /// Destination table: `schema.table` or `catalog.schema.table`.
+        target: String,
+        /// Load semantics. Only [`SinkMode::Append`] is accepted in v1alpha1.
+        #[serde(default)]
+        mode: SinkMode,
+        /// Environment variable holding an optional Bearer token.
+        ///
+        /// When unset or empty, no `Authorization` header is sent.
+        #[serde(default = "default_flight_token_env")]
+        token_env: String,
+    },
 }
 
 fn default_dsn_env() -> String {
     "PRAMEN_POSTGRES_DSN".to_owned()
+}
+
+fn default_flight_token_env() -> String {
+    "PRAMEN_FLIGHT_SQL_TOKEN".to_owned()
 }
 
 /// Load semantics for database sinks.

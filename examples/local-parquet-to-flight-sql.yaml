@@ -1,0 +1,28 @@
+# Local Parquet → SQL → Flight SQL append (E1.2 / ADR 0008).
+#
+# Point `endpoint` at a Flight SQL server that accepts CommandStatementIngest.
+# Optional bearer token: export PRAMEN_FLIGHT_SQL_TOKEN=…
+#
+#   pramen run examples/local-parquet-to-flight-sql.yaml
+apiVersion: pramen.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: local-parquet-to-flight-sql
+spec:
+  source:
+    type: object_store
+    url: /tmp/pramen-e2e-input
+    format:
+      type: parquet
+  transforms:
+    - id: enrich
+      type: sql
+      query: >
+        SELECT id, category, amount, amount * 1.21 AS amount_gross
+        FROM input
+        WHERE category <> 'epsilon'
+  sink:
+    type: flightSql
+    endpoint: http://127.0.0.1:50051
+    target: analytics.events
+    mode: append

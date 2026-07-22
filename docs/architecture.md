@@ -786,14 +786,18 @@ control.
 ADBC remains the planned expansion mechanism — it exists to make many
 warehouses (Snowflake, BigQuery, Redshift, Synapse, ClickHouse, Databricks)
 addressable through one API, and it enters the roadmap when the second
-warehouse family does. Flight SQL likewise moves to the expansion phase.
+warehouse family does. Flight SQL append (ADR 0008) is available in the
+default binary alongside native COPY; upsert and broader warehouse coverage
+remain expansion work.
 
 Sink targets in order:
 
 1. PostgreSQL (native COPY) as the local conformance and integration target;
 2. Amazon Aurora PostgreSQL and RDS for PostgreSQL as the first managed-cloud
    acceptance targets, over the same native path;
-3. ADBC-backed warehouses and Flight SQL in the expansion phase.
+3. Flight SQL append (`CommandStatementIngest`) for Arrow-native endpoints
+   (ADR 0008);
+4. ADBC-backed warehouses in the expansion phase.
 
 For Aurora PostgreSQL, test both client-streamed `COPY FROM STDIN` and
 server-side S3 import through the `aws_s3` extension.
@@ -1027,8 +1031,9 @@ conformance suite.
 
 ### Phase 3: expansion and product maturity
 
-- ADBC-backed warehouse sinks and Flight SQL, with container driver profiles;
-- fan-out DAGs;
+- ADBC-backed warehouse sinks with container driver profiles;
+- Flight SQL append sink (shipped; upsert / broader matrix still open);
+- fan-out DAGs (shipped, ADR 0007);
 - connector SDK and conformance tests;
 - semantic transform evaluation and provider conformance suites;
 - compatibility policy, security reporting, release automation, and examples;
@@ -1070,7 +1075,8 @@ the synonyms to avoid, since the same vocabulary feeds the paper.
 - WASM as the user-code extension boundary, delivered as the first post-v1
   milestone rather than in v1.
 - v1 database delivery is native pure-Rust PostgreSQL `COPY`; ADBC arrives
-  with multi-warehouse expansion.
+  with multi-warehouse expansion. Append-only Flight SQL is available in the
+  default binary (ADR 0008).
 - v1 file formats are Parquet and NDJSON.
 - Shared-nothing first; no cluster coordinator in v1.
 - Standalone CLI and daemon as the primary product surface.

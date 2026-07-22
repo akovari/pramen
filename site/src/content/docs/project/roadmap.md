@@ -61,8 +61,9 @@ This page is the honest summary. Workspace version: **0.2.0**.
   ([Deploying on AWS](/pramen/cookbook/aws-deploy/)). Live AWS apply still
   needs credentials.
 - **Phase 3 product (E1)**: **E1.3 fan-out done** (ADR 0007: `from` edges +
-  `sinks`, all-sinks-then-checkpoint). Still open: ADBC / Flight SQL sinks,
-  connector SDK.
+  `sinks`, all-sinks-then-checkpoint); **E1.2 Flight SQL append done**
+  (ADR 0008: `type: flightSql`, `CommandStatementIngest`). Still open: ADBC
+  (E1.1), connector SDK (E1.4).
 - **Phase 3 research**: E2.1 offline dispatch model + mock frontier and
   E2.2 memoization contract/measurements are published under
   [`docs/research/`](https://github.com/akovari/pramen/tree/main/docs/research).
