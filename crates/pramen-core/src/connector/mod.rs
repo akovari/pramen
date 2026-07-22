@@ -6,6 +6,4 @@ mod types;
 
 pub use conformance::{RecordingSink, assert_sink_commit_barrier};
 pub use registry::{builtin, builtins, matrix_markdown};
-pub use types::{
-    ConnectorDescriptor, ConnectorKind, DeliveryContract, SupportLevel,
-};
+pub use types::{ConnectorDescriptor, ConnectorKind, DeliveryContract, SupportLevel};

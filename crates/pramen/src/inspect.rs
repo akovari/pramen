@@ -1,6 +1,6 @@
 //! The `pramen inspect` command family (E1.4).
 
-use pramen_core::connector::{builtin, builtins, ConnectorDescriptor};
+use pramen_core::connector::{ConnectorDescriptor, builtin, builtins};
 
 /// Format the built-in connector list for human-readable inspect output.
 #[must_use]

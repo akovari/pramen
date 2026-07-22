@@ -19,8 +19,8 @@ pub use types::{
     AiBreaker, AiBudget, AiOutput, AiTransform, AiValidation, ApiVersion, AutoDispatchHints,
     BoundSinkSpec, CheckpointSpec, ExecutionMode, FieldSpec, FieldType, FormatSpec, InvalidPolicy,
     Kind, Metadata, ModelBatchSpec, ModelSpec, PipelineSpec, PipelineSpecBody, ResidencySpec,
-    ResolvedSink, RuntimeSpec, SinkMode, SinkSpec, SourceSpec, SqlTransform, TransformSpec,
-    WasmLimitsSpec, WasmTransform, SOURCE_STAGE_ID,
+    ResolvedSink, RuntimeSpec, SOURCE_STAGE_ID, SinkMode, SinkSpec, SourceSpec, SqlTransform,
+    TransformSpec, WasmLimitsSpec, WasmTransform,
 };
 
 /// Parse a YAML document into a validated [`PipelineSpec`].

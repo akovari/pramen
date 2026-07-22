@@ -474,9 +474,7 @@ pub fn ledger_location() -> String {
     std::env::var(LEDGER_PATH_ENV).unwrap_or_else(|_| DEFAULT_LEDGER_PATH.to_owned())
 }
 
-async fn plan_sinks(
-    spec: &PipelineSpec,
-) -> Result<Vec<(String, String, Box<dyn Sink>)>, String> {
+async fn plan_sinks(spec: &PipelineSpec) -> Result<Vec<(String, String, Box<dyn Sink>)>, String> {
     let mut planned = Vec::new();
     for resolved in spec.spec.resolved_sinks() {
         let sink: Box<dyn Sink> = match resolved.sink {
@@ -504,18 +502,16 @@ async fn plan_sinks(
                 mode: _,
                 token_env,
             } => {
-                let token = std::env::var(token_env).ok().filter(|value| !value.is_empty());
+                let token = std::env::var(token_env)
+                    .ok()
+                    .filter(|value| !value.is_empty());
                 Box::new(
                     pramen_io::FlightSqlSink::new(endpoint, target, token)
                         .map_err(|error| format!("sink `{}`: {error}", resolved.id))?,
                 )
             }
         };
-        planned.push((
-            resolved.id.to_owned(),
-            resolved.from.to_owned(),
-            sink,
-        ));
+        planned.push((resolved.id.to_owned(), resolved.from.to_owned(), sink));
     }
     if planned.is_empty() {
         return Err("pipeline has no sinks".to_owned());

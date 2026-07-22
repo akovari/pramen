@@ -190,7 +190,9 @@ async fn sink_write_loop(
 
 fn merge_outcome(outcome: &mut Result<(), RunError>, result: Result<(), RunError>) {
     match (&*outcome, &result) {
-        (Ok(()) | Err(RunError::Cancelled), Err(error)) if !matches!(error, RunError::Cancelled) => {
+        (Ok(()) | Err(RunError::Cancelled), Err(error))
+            if !matches!(error, RunError::Cancelled) =>
+        {
             *outcome = result;
         }
         (Ok(()), Err(RunError::Cancelled)) => *outcome = result,
@@ -318,10 +320,7 @@ pub async fn run_pipeline(
                 break;
             }
             if let Err(source) = sink.commit().await {
-                outcome = Err(RunError::Stage {
-                    stage: id,
-                    source,
-                });
+                outcome = Err(RunError::Stage { stage: id, source });
                 cancel.cancel();
                 break;
             }

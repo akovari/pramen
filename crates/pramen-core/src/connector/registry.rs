@@ -1,8 +1,6 @@
 //! Built-in connector registry (E1.4).
 
-use super::types::{
-    ConnectorDescriptor, ConnectorKind, DeliveryContract, SupportLevel,
-};
+use super::types::{ConnectorDescriptor, ConnectorKind, DeliveryContract, SupportLevel};
 
 /// All first-party and planned connectors known to the lean binary / matrix.
 #[must_use]
@@ -33,9 +31,7 @@ pub fn matrix_markdown() -> String {
     for connector in builtins() {
         let modes_schemes = match connector.kind {
             ConnectorKind::Sink if !connector.modes.is_empty() => connector.modes.join(", "),
-            ConnectorKind::Source if !connector.schemes.is_empty() => {
-                connector.schemes.join(", ")
-            }
+            ConnectorKind::Source if !connector.schemes.is_empty() => connector.schemes.join(", "),
             _ => "—".to_owned(),
         };
         out.push_str(&format!(
@@ -146,8 +142,14 @@ mod tests {
         assert!(ids.contains(&"sink.flightSql"));
         assert!(ids.contains(&"source.objectStore"));
         assert!(ids.contains(&"sink.adbc"));
-        assert_eq!(builtin("sink.flightSql").unwrap().support_level, SupportLevel::Preview);
-        assert_eq!(builtin("sink.adbc").unwrap().support_level, SupportLevel::Planned);
+        assert_eq!(
+            builtin("sink.flightSql").unwrap().support_level,
+            SupportLevel::Preview
+        );
+        assert_eq!(
+            builtin("sink.adbc").unwrap().support_level,
+            SupportLevel::Planned
+        );
         assert!(builtin("nope").is_none());
     }
 

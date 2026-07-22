@@ -6,7 +6,7 @@
 use super::component_ref::{ComponentRef, ComponentRefError};
 use super::error::ValidationIssue;
 use super::types::{
-    AiTransform, PipelineSpec, SinkMode, SinkSpec, SourceSpec, TransformSpec, SOURCE_STAGE_ID,
+    AiTransform, PipelineSpec, SOURCE_STAGE_ID, SinkMode, SinkSpec, SourceSpec, TransformSpec,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -294,7 +294,10 @@ fn validate_sinks(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
                 if let Some(from) = &bound.from
                     && from.trim().is_empty()
                 {
-                    push(&format!("{path}.from"), "must not be empty when set".to_owned());
+                    push(
+                        &format!("{path}.from"),
+                        "must not be empty when set".to_owned(),
+                    );
                 }
                 validate_sink_body(&bound.sink, &path, push);
             }
@@ -334,7 +337,10 @@ fn validate_sink_body(sink: &SinkSpec, path: &str, push: &mut impl FnMut(&str, S
             let mut seen = BTreeSet::new();
             for key in keys {
                 if key.trim().is_empty() {
-                    push(&format!("{path}.keys"), "key columns must not be empty".to_owned());
+                    push(
+                        &format!("{path}.keys"),
+                        "key columns must not be empty".to_owned(),
+                    );
                 } else if !seen.insert(key) {
                     push(
                         &format!("{path}.keys"),
@@ -361,9 +367,7 @@ fn validate_sink_body(sink: &SinkSpec, path: &str, push: &mut impl FnMut(&str, S
             if !(2..=3).contains(&parts.len()) || parts.iter().any(|p| p.trim().is_empty()) {
                 push(
                     &format!("{path}.target"),
-                    format!(
-                        "`{target}` must be `schema.table` or `catalog.schema.table`"
-                    ),
+                    format!("`{target}` must be `schema.table` or `catalog.schema.table`"),
                 );
             }
             if *mode != SinkMode::Append {
@@ -440,10 +444,7 @@ fn validate_topology(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
             );
         }
         *incoming.entry(resolved.id).or_insert(0) += 1;
-        children
-            .entry(resolved.from)
-            .or_default()
-            .push(resolved.id);
+        children.entry(resolved.from).or_default().push(resolved.id);
     }
 
     for (node, count) in &incoming {
@@ -459,7 +460,8 @@ fn validate_topology(spec: &PipelineSpec, push: &mut impl FnMut(&str, String)) {
     }
 
     // Cycle detection among transforms (sinks have no outgoing edges).
-    let transform_ids: BTreeSet<&str> = spec.spec.transforms.iter().map(TransformSpec::id).collect();
+    let transform_ids: BTreeSet<&str> =
+        spec.spec.transforms.iter().map(TransformSpec::id).collect();
     let mut visiting = BTreeSet::new();
     let mut visited = BTreeSet::new();
     for id in &transform_ids {
@@ -536,7 +538,8 @@ fn dfs_cycle<'a>(
     visiting.insert(node);
     if let Some(kids) = children.get(node) {
         for kid in kids {
-            if transform_ids.contains(kid) && dfs_cycle(kid, children, transform_ids, visiting, visited)
+            if transform_ids.contains(kid)
+                && dfs_cycle(kid, children, transform_ids, visiting, visited)
             {
                 return true;
             }

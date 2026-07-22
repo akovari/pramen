@@ -51,14 +51,10 @@ impl FlightSqlSink {
     }
 }
 
-fn parse_target(
-    target: &str,
-) -> Result<(Option<String>, Option<String>, String), StageError> {
+fn parse_target(target: &str) -> Result<(Option<String>, Option<String>, String), StageError> {
     let parts: Vec<&str> = target.split('.').collect();
     match parts.as_slice() {
-        [schema, table]
-            if !schema.trim().is_empty() && !table.trim().is_empty() =>
-        {
+        [schema, table] if !schema.trim().is_empty() && !table.trim().is_empty() => {
             Ok((None, Some((*schema).to_owned()), (*table).to_owned()))
         }
         [catalog, schema, table]
@@ -139,8 +135,8 @@ mod tests {
     use arrow_flight::decode::FlightRecordBatchStream;
     use arrow_flight::error::FlightError;
     use arrow_flight::flight_service_server::FlightServiceServer;
-    use arrow_flight::sql::server::{FlightSqlService, PeekableFlightDataStream};
     use arrow_flight::sql::SqlInfo;
+    use arrow_flight::sql::server::{FlightSqlService, PeekableFlightDataStream};
     use futures::TryStreamExt;
     use std::net::SocketAddr;
     use std::sync::Arc;
@@ -237,7 +233,11 @@ mod tests {
         let mut sink = FlightSqlSink::new(&endpoint, "public.events", None).unwrap();
         sink.write(batch(10)).await.unwrap();
         sink.write(batch(5)).await.unwrap();
-        assert_eq!(rows.load(Ordering::SeqCst), 0, "must not send before commit");
+        assert_eq!(
+            rows.load(Ordering::SeqCst),
+            0,
+            "must not send before commit"
+        );
         sink.commit().await.unwrap();
 
         assert_eq!(rows.load(Ordering::SeqCst), 15);

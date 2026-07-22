@@ -71,8 +71,7 @@ where
 fn fixture_batch(rows: i64) -> RecordBatch {
     let schema = Arc::new(Schema::new(vec![Field::new("v", DataType::Int64, false)]));
     let values: Vec<i64> = (0..rows).collect();
-    RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(values))])
-        .expect("fixture batch")
+    RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(values))]).expect("fixture batch")
 }
 
 /// In-memory sink used to pin the conformance harness itself.
@@ -120,9 +119,10 @@ mod tests {
     async fn recording_sink_satisfies_commit_barrier() {
         let rows = Arc::new(AtomicU64::new(0));
         let probe = Arc::clone(&rows);
-        assert_sink_commit_barrier(|| RecordingSink::new(Arc::clone(&rows)), move || {
-            probe.load(Ordering::SeqCst)
-        })
+        assert_sink_commit_barrier(
+            || RecordingSink::new(Arc::clone(&rows)),
+            move || probe.load(Ordering::SeqCst),
+        )
         .await
         .unwrap();
     }
