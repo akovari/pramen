@@ -122,7 +122,7 @@ impl Sink for FlightSqlSink {
         client
             .execute_ingest(command, stream)
             .await
-            .map_err(|error| StageError::external(error))?;
+            .map_err(StageError::external)?;
         Ok(())
     }
 }

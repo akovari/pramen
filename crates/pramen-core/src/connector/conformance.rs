@@ -28,10 +28,10 @@ where
 {
     let baseline = visible_rows();
     let mut sink = make_sink();
-    sink.write(fixture_batch(10))
+    sink.write(fixture_batch(10)?)
         .await
         .map_err(|error| format!("write: {error}"))?;
-    sink.write(fixture_batch(5))
+    sink.write(fixture_batch(5)?)
         .await
         .map_err(|error| format!("write: {error}"))?;
     let after_write = visible_rows();
@@ -54,7 +54,7 @@ where
     let baseline = visible_rows();
     {
         let mut sink = make_sink();
-        sink.write(fixture_batch(7))
+        sink.write(fixture_batch(7)?)
             .await
             .map_err(|error| format!("write (no commit): {error}"))?;
         drop(sink);
@@ -68,10 +68,11 @@ where
     Ok(())
 }
 
-fn fixture_batch(rows: i64) -> RecordBatch {
+fn fixture_batch(rows: i64) -> Result<RecordBatch, String> {
     let schema = Arc::new(Schema::new(vec![Field::new("v", DataType::Int64, false)]));
     let values: Vec<i64> = (0..rows).collect();
-    RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(values))]).expect("fixture batch")
+    RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(values))])
+        .map_err(|error| format!("fixture batch: {error}"))
 }
 
 /// In-memory sink used to pin the conformance harness itself.

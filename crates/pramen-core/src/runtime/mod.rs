@@ -28,6 +28,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio_util::sync::CancellationToken;
 
+/// JoinSet payload for sink write tasks (stage id, sink handle, write result).
+type SinkWriteJoin = (String, Box<dyn Sink>, Result<(), RunError>);
+
 /// Tuning knobs for [`run_pipeline`].
 #[derive(Debug, Clone)]
 pub struct RunOptions {
@@ -268,8 +271,7 @@ pub async fn run_pipeline(
         });
     }
 
-    let mut sink_tasks: tokio::task::JoinSet<(String, Box<dyn Sink>, Result<(), RunError>)> =
-        tokio::task::JoinSet::new();
+    let mut sink_tasks: tokio::task::JoinSet<SinkWriteJoin> = tokio::task::JoinSet::new();
     for (stage_id, _from, mut sink) in sinks {
         let Some(mut input) = in_rxs.remove(&stage_id) else {
             return Err(RunError::Join(format!(
